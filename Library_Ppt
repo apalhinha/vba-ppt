@@ -31,19 +31,18 @@ Const ARADIUS = 8
 
 Public Sub AdjustArrows()
 Dim sld As PowerPoint.slide
-Dim shp As PowerPoint.Shape
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean 
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
     Set sld = Application.ActiveWindow.View.slide
-    If ActiveWindow.Selection.Type = ppSelectionShapes Then
-        For Each shp In ActiveWindow.Selection.ShapeRange
-            If shp.Type = msoFreeform Then
-                If doAdjustArrows(sld, shp) Then
-                    shp.Delete
-                Else
-                    Exit For
-                End If
+    For Each sp In sr
+        If sp.Type = msoFreeform Then
+            If doAdjustArrows(sld, sp) Then
+                sp.Delete
+            Else
+                Exit For
             End If
-        Next shp
-    End If
+        End If
+    Next sp
 End Sub
 
 Private Function doAdjustArrows(sld As PowerPoint.slide, shp As PowerPoint.Shape) As Boolean
@@ -1701,4 +1700,6 @@ Dim sr As ShapeRange
     Exit Function
 
 End Function
+
+
 
