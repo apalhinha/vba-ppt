@@ -1,0 +1,1704 @@
+Attribute VB_Name = "Library_Ppt"
+Option Explicit
+
+' References:
+' Microsoft Excel 16.0 Object Library
+
+' Revision
+' 2025-05-24 AdjustArrows
+' 2025-05-20 BoxPostIt, FixFont, ExportYellow
+' 2025-05-13 Footer personalized in SetSlideDate
+' 2025-05-08 BoxBlue BoxYellow BoxSalmon BoxGreen BoxPurple BoxBlueHigh BoxOrangeHigh BoxPurpleHigh BoxTextNormal BoxTextBlue
+' 2025-05-08 CreatePalette TextSetMargin TextSetNoautofit TextSetResizetoFit TextAlignTop TextAlignMiddle TextAlignBottom
+' 2025-05-07 ListColors
+' 2025-05-05 SetSlideDate
+' 2025-05-02 JoinGuideTop, JoinGuideTopXtra, JoinGuideLeft, JoinGuideRight
+' 2025-04-30 SetTopGuide (now deprecated)
+' 2025-04-02 MoveCenter2Left, MoveCenter2Right, MoveMidle2Top, MoveMidle2Bottom
+' 2025-02-06 Size0SpaceHor, Size0SpaceVer, SizeHor2StartBack, SizeVer2StartBack
+' 2024-12-06 TableXls 2 Ppt
+
+' Join Left, Join Right, Join Bottom, Join Top | KeepHor, KeepVer, KeepHor Model, KeepVer Model, Move 2 Center, Move to Midle |
+' Size Set, Size Width, Size Width Left, Size Height, Size Height Top, SizeHor 2Start Back, SizeHor 2Start, SizeHor 2End, SizeHor 2Slide
+' (cont) SizeVer 2Start Back, SizeVer 2Start, SizeVer 2End, SizeVer 2Slide, Size 2Space Hor, Size 0Space Hor, Size 2Space Ver, Size 0Space Ver |
+' Color Border, Color Lighter | Swap Objects, Swap Text, Round Corners, Zorder Selected | Table Xls2ppt, InCell Center, InCell Midle
+
+Global Const BOX_TITLE = "PPT Automation"
+Const X_COORD = 1
+Const Y_COORD = 2
+Const ZERO_FLOAT = 0.00001
+Const ARADIUS = 8
+
+Public Sub AdjustArrows()
+Dim sld As PowerPoint.slide
+Dim shp As PowerPoint.Shape
+    Set sld = Application.ActiveWindow.View.slide
+    If ActiveWindow.Selection.Type = ppSelectionShapes Then
+        For Each shp In ActiveWindow.Selection.ShapeRange
+            If shp.Type = msoFreeform Then
+                If doAdjustArrows(sld, shp) Then
+                    shp.Delete
+                Else
+                    Exit For
+                End If
+            End If
+        Next shp
+    End If
+End Sub
+
+Private Function doAdjustArrows(sld As PowerPoint.slide, shp As PowerPoint.Shape) As Boolean
+Dim sn As PowerPoint.ShapeNodes, node As PowerPoint.ShapeNode
+Dim nodeX As Single, nodeY As Single
+Dim iNode As Integer, iSerie As Integer
+Dim aSeries() As Variant ' Array of 2 dimentions:
+                         '[1=X, 2=Y, 3=Position-within-Nodes] + index.
+' SegmentType=0 is msoSegmentLine. SegmentType=1 is msoSegmentCurve.
+    Set sn = shp.Nodes
+    ReDim aSeries(1 To 3, 0 To 0)
+    iNode = 1: iSerie = 0
+    'ListShapeNodesInfo shp
+    While iNode <= sn.Count
+        Set node = shp.Nodes(iNode)
+        iSerie = iSerie + 1
+        ReDim Preserve aSeries(1 To 3, 0 To iSerie)
+        aSeries(1, iSerie) = CDbl(node.Points(1, 1))
+        aSeries(2, iSerie) = CDbl(node.Points(1, 2))
+        aSeries(3, iSerie) = iNode
+        nodeX = node.Points(1, 1)
+        nodeY = node.Points(1, 2)
+        iNode = iNode + 1
+        If iNode <= sn.Count Then
+            Set node = shp.Nodes(iNode)
+            If node.SegmentType = msoSegmentCurve Then iNode = iNode + 2
+        End If
+    Wend
+    For iSerie = 1 To UBound(aSeries, 2)
+        'Debug.Print iSerie & ": " & aSeries(1, iSerie) & ", " & aSeries(2, iSerie) & " (idx " & aSeries(3, iSerie) & ")"
+    Next iSerie
+    doAdjustArrows = CreateBezierLine(sld, aSeries)
+End Function
+
+Function CreateBezierLine(sld As PowerPoint.slide, aSeries() As Variant) As Boolean
+Dim i As Long
+Dim dx As Double, dy As Double
+Dim ffb As PowerPoint.FreeformBuilder, shp As PowerPoint.Shape
+Dim xcur As Double, ycur As Double
+Dim xdelta As Double, ydelta As Double
+Const DEFDELTA = 10
+Dim errmsg As String, previous As String
+
+    Set ffb = sld.Shapes.BuildFreeform(msoEditingCorner, aSeries(1, 1), aSeries(2, 1))
+    xcur = aSeries(1, 1): ycur = aSeries(2, 1)
+    previous = "none"
+    With ffb
+        For i = 1 To UBound(aSeries, 2) - 2
+            dx = aSeries(1, i + 1) - aSeries(1, i)
+            dy = aSeries(2, i + 1) - aSeries(2, i)
+            If Abs(dx) > Abs(dy) Then
+                'Debug.Print "horizontal"
+                If previous = "horizontal" Then errmsg = "horizontal"
+                previous = "horizontal"
+                xdelta = DEFDELTA
+                If dx < 0 Then xdelta = -xdelta
+                ydelta = DEFDELTA ' Assume next vertical goes DOWN
+                If aSeries(2, i + 2) < aSeries(2, i + 1) Then ydelta = -ydelta  ' or UP
+                xcur = aSeries(1, i + 1)
+                .AddNodes msoSegmentLine, msoEditingCorner, xcur - xdelta, ycur   'msoEditingCorner, xcur - 2 * xdelta, ycur, xcur, ycur, xcur - xdelta, ycur
+                .AddNodes msoSegmentCurve, msoEditingCorner, xcur, ycur, xcur, ycur, xcur, ycur + ydelta
+            Else
+                'Debug.Print "vertical"
+                If previous = "vertical" Then errmsg = "vertical"
+                previous = "vertical"
+                ydelta = DEFDELTA
+                If dy < 0 Then ydelta = -ydelta
+                xdelta = DEFDELTA
+                If aSeries(1, i + 2) < aSeries(1, i + 1) Then xdelta = -xdelta
+                ycur = aSeries(2, i + 1)
+                .AddNodes msoSegmentLine, msoEditingCorner, xcur, ycur - ydelta  ' msoEditingCorner, xcur, ycur - 2 * ydelta, xcur, ycur, xcur, ycur - ydelta
+                .AddNodes msoSegmentCurve, msoEditingCorner, xcur, ycur, xcur, ycur, xcur + xdelta, ycur
+            End If
+        Next i
+        dx = aSeries(1, i + 1) - aSeries(1, i)
+        dy = aSeries(2, i + 1) - aSeries(2, i)
+        If Abs(dx) > Abs(dy) Then
+            'Debug.Print "horizontal"
+            xcur = aSeries(1, i + 1)
+            .AddNodes msoSegmentLine, msoEditingCorner, xcur, ycur
+        Else
+            'Debug.Print "vertical"
+            ycur = aSeries(2, i + 1)
+            .AddNodes msoSegmentLine, msoEditingCorner, xcur, ycur
+        End If
+    End With
+    
+    If errmsg <> "" Then
+        MsgBox "Multiple consecutive " & errmsg & " lines." & vbCrLf & "Exiting...", vbCritical
+        CreateBezierLine = False
+    Else
+        Set shp = ffb.ConvertToShape
+        With shp.Line
+            .ForeColor.RGB = RGB(100, 100, 100)
+            .Weight = 1.5
+            .BeginArrowheadLength = msoArrowheadShort
+            .BeginArrowheadStyle = msoArrowheadOval
+            .BeginArrowheadWidth = msoArrowheadNarrow
+            .EndArrowheadLength = msoArrowheadLengthMedium
+            .EndArrowheadStyle = msoArrowheadTriangle
+            .EndArrowheadWidth = msoArrowheadWidthMedium
+        End With
+        CreateBezierLine = True
+    End If
+    Set ffb = Nothing
+    Exit Function
+End Function
+
+Public Sub CurvaSetas()
+Dim sld As slide
+Dim shp As Shape
+Dim aNodes As ShapeNodes
+Dim ctObjectos As Integer, ctSelection As Integer
+Dim segmentText  As String, i As Integer
+
+    Set sld = Application.ActiveWindow.View.slide
+    If ActiveWindow.Selection.Type = ppSelectionShapes Then
+        For Each shp In ActiveWindow.Selection.ShapeRange
+            ctSelection = ctSelection + 1
+            If shp.Type = msoFreeform Then
+                Set aNodes = shp.Nodes
+                i = 2: segmentText = ""
+                While i <= aNodes.Count
+                    If aNodes.Item(i).SegmentType = msoSegmentLine Then
+                        i = i + 1: segmentText = segmentText & "-"
+                    Else
+                        i = i + 3: segmentText = segmentText & "("
+                    End If
+                Wend
+                'Debug.Print segmentText
+                'Exit Sub
+                
+                If aNodes.Count = 7 And segmentText = "((" And _
+                    Abs(aNodes.Item(4).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD)) >= _
+                    Abs(aNodes.Item(4).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)) Then
+                        ' Em L, recem desenhado, primeiro horizontal
+                        doSetas sld, CSng(aNodes.Item(1).Points(1, X_COORD)), CSng(aNodes.Item(1).Points(1, Y_COORD)), _
+                                     aNodes.Item(7).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD), _
+                                     0, _
+                                     0, _
+                                     aNodes.Item(7).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)
+                        shp.Delete: ctObjectos = ctObjectos + 1
+                ElseIf aNodes.Count = 7 And segmentText = "((" And _
+                    Abs(aNodes.Item(4).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD)) < _
+                    Abs(aNodes.Item(4).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)) Then
+                        ' Em L, recem desenhado, primeiro vertical
+                        doSetas sld, CSng(aNodes.Item(1).Points(1, X_COORD)), CSng(aNodes.Item(1).Points(1, Y_COORD)), _
+                                     0, _
+                                     aNodes.Item(7).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD), _
+                                     aNodes.Item(7).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD), _
+                                     0
+                        shp.Delete: ctObjectos = ctObjectos + 1
+                ElseIf aNodes.Count = 10 And segmentText = "(((" And _
+                    Abs(aNodes.Item(4).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD)) >= _
+                    Abs(aNodes.Item(4).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)) Then
+                        ' Em S, recem desenhado, primeiro horizontal
+                        doSetas sld, CSng(aNodes.Item(1).Points(1, X_COORD)), CSng(aNodes.Item(1).Points(1, Y_COORD)), _
+                                     aNodes.Item(7).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD), _
+                                     0, _
+                                     0, _
+                                     aNodes.Item(7).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD), _
+                                     aNodes.Item(10).Points(1, X_COORD) - aNodes.Item(7).Points(1, X_COORD), _
+                                     0
+                        shp.Delete: ctObjectos = ctObjectos + 1
+                ElseIf aNodes.Count = 10 And segmentText = "(((" And _
+                    Abs(aNodes.Item(4).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD)) < _
+                    Abs(aNodes.Item(4).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)) Then
+                        ' Em S, recem desenhado, primeiro vertical
+                        doSetas sld, CSng(aNodes.Item(1).Points(1, X_COORD)), CSng(aNodes.Item(1).Points(1, Y_COORD)), _
+                                     0, _
+                                     aNodes.Item(7).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD), _
+                                     aNodes.Item(7).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD), _
+                                     0, _
+                                     0, _
+                                     aNodes.Item(10).Points(1, Y_COORD) - aNodes.Item(7).Points(1, Y_COORD)
+                        shp.Delete: ctObjectos = ctObjectos + 1
+                ElseIf aNodes.Count = 6 And segmentText = "-(-" And _
+                    Abs(aNodes.Item(2).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD)) >= _
+                    Abs(aNodes.Item(2).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)) Then
+                    ' Em L já dos nossos, primeiro na horizontal
+                        doSetas sld, CSng(aNodes.Item(1).Points(1, X_COORD)), CSng(aNodes.Item(1).Points(1, Y_COORD)), _
+                                    aNodes.Item(6).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD), _
+                                     0, _
+                                     0, _
+                                     aNodes.Item(6).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)
+                        shp.Delete: ctObjectos = ctObjectos + 1
+                ElseIf aNodes.Count = 6 And segmentText = "-(-" And _
+                    Abs(aNodes.Item(2).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD)) < _
+                    Abs(aNodes.Item(2).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)) Then
+                    ' Em L já dos nossos, primeiro na vertical
+                        doSetas sld, CSng(aNodes.Item(1).Points(1, X_COORD)), CSng(aNodes.Item(1).Points(1, Y_COORD)), _
+                                     0, _
+                                     aNodes.Item(6).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD), _
+                                     aNodes.Item(6).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD), _
+                                     0
+                        shp.Delete: ctObjectos = ctObjectos + 1
+                ElseIf aNodes.Count = 10 And segmentText = "-(-(-" And _
+                    Abs(aNodes.Item(2).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD)) >= _
+                    Abs(aNodes.Item(2).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)) Then
+                    ' Em S já dos nossos esticado, primeiro na horizontal
+                        doSetas sld, CSng(aNodes.Item(1).Points(1, X_COORD)), CSng(aNodes.Item(1).Points(1, Y_COORD)), _
+                                    aNodes.Item(5).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD), _
+                                     0, _
+                                     0, _
+                                     aNodes.Item(10).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD), _
+                                     aNodes.Item(10).Points(1, X_COORD) - aNodes.Item(5).Points(1, X_COORD)
+                        shp.Delete: ctObjectos = ctObjectos + 1
+                ElseIf aNodes.Count = 10 And segmentText = "-(-(-" And _
+                    Abs(aNodes.Item(2).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD)) < _
+                    Abs(aNodes.Item(2).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)) Then
+                        ' Em S já dos nossos esticado, primeiro na vertical
+                        doSetas sld, CSng(aNodes.Item(1).Points(1, X_COORD)), CSng(aNodes.Item(1).Points(1, Y_COORD)), _
+                                     0, _
+                                     aNodes.Item(2).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD), _
+                                     aNodes.Item(aNodes.Count).Points(1, X_COORD) - aNodes.Item(2).Points(1, X_COORD), _
+                                     0, _
+                                     0, _
+                                     aNodes.Item(aNodes.Count).Points(1, Y_COORD) - aNodes.Item(2).Points(1, Y_COORD)
+                        shp.Delete: ctObjectos = ctObjectos + 1
+                ElseIf Len(segmentText) > 2 And InStr(1, segmentText, "-") > 0 And Left(segmentText, 1) = "-" And _
+                    Abs(aNodes.Item(2).Points(1, X_COORD) - aNodes.Item(1).Points(1, X_COORD)) >= _
+                    Abs(aNodes.Item(2).Points(1, Y_COORD) - aNodes.Item(1).Points(1, Y_COORD)) Then
+                        ' Mais de 2 segs, alguma recta, primeiro horizontal, primeiro segmento é linha, primeira mira é o ponto 3, último é terminador FALTA
+                        'shp.Delete: ctObjectos = ctObjectos + 1
+                        ' Mais de 2 segs, alguma recta, primeiro vertical, primeiro segmento é linha, primeira mira é o ponto 3, último é terminador FALTA
+                        ' Mais de 2 segs, alguma recta, primeiro horizontal, primeiro segmento é curva, primeira mira é o ponto 3, último é terminador FALTA
+                        ' Mais de 2 segs, alguma recta, primeiro vertical, primeiro segmento é curva, primeira mira é o ponto 3, último é terminador FALTA
+                        ' Tudo linhas curvas, seguir as direcções, último alinha pelo terminador. FALTA
+                Else
+                    MsgBox "Mais um caso previsto"
+                End If
+            End If
+        Next shp
+        If ctSelection <> ctObjectos Then
+            MsgBox "Tratei " & ctObjectos & " linhas, não " & ctSelection
+        End If
+    End If
+
+End Sub
+
+
+Private Function CalculaRad(aDelta As Single) As Single
+Dim res As Single
+    res = 0
+    If aDelta > ZERO_FLOAT Then res = ARADIUS
+    If aDelta < -ZERO_FLOAT Then res = -ARADIUS
+    CalculaRad = res
+End Function
+
+Private Sub doSetas(sld As slide, xstart As Single, ystart As Single, x1delta As Single, y1delta As Single, x2delta As Single, y2delta As Single, Optional x3delta As Single = 0, Optional y3delta As Single = 0)
+Dim ffb As FreeformBuilder
+Dim xrad As Single, yrad As Single
+Dim xCurr As Single, yCurr As Single
+Dim shp As Shape
+' cals rad da proxima (x1)
+' linha - rad
+' calc rad da proxima (x2)
+' curva + rad
+' update curr para a quadricula  <<<
+' linha - rad
+
+' calc rad da proxima (x3)
+' curva + rad
+' update curr para a quadricula
+' linha - rad
+    Set ffb = sld.Shapes.BuildFreeform(msoEditingCorner, xstart, ystart)
+    xCurr = xstart: yCurr = ystart
+    With ffb
+        xrad = CalculaRad(x1delta)
+        yrad = CalculaRad(y1delta)
+        'Linha                                      end-point-of-segment
+        .AddNodes msoSegmentLine, msoEditingCorner, xCurr + x1delta - xrad, yCurr + y1delta - yrad
+        xrad = CalculaRad(x2delta)
+        yrad = CalculaRad(y2delta)
+        '  Curva                                     1st-control,                        2nd-control,                        end-point-of-segment
+        .AddNodes msoSegmentCurve, msoEditingCorner, xCurr + x1delta, yCurr + y1delta, xCurr + x1delta, yCurr + y1delta, xCurr + x1delta + xrad, yCurr + y1delta + yrad
+        xCurr = xCurr + x1delta
+        yCurr = yCurr + y1delta
+        If Abs(x3delta) < ZERO_FLOAT And Abs(y3delta) < ZERO_FLOAT Then
+            ' São duas linhas, esta é a última
+            'Linha                                      end-point-of-segment
+            .AddNodes msoSegmentLine, msoEditingCorner, xCurr + x2delta, yCurr + y2delta
+        Else
+            ' São 3 Linhas, esta deixa espaço para a curva
+            'Linha                                      end-point-of-segment
+            .AddNodes msoSegmentLine, msoEditingCorner, xCurr + x2delta - xrad, yCurr + y2delta - yrad
+            xrad = CalculaRad(x3delta)
+            yrad = CalculaRad(y3delta)
+            '  Curva                                     1st-control,                        2nd-control,                        end-point-of-segment
+            .AddNodes msoSegmentCurve, msoEditingCorner, xCurr + x2delta, yCurr + y2delta, xCurr + x2delta, yCurr + y2delta, xCurr + x2delta + xrad, yCurr + y2delta + yrad
+            xCurr = xCurr + x2delta
+            yCurr = yCurr + y2delta
+            'Linha                                      end-point-of-segment
+            .AddNodes msoSegmentLine, msoEditingCorner, xCurr + x3delta, yCurr + y3delta
+        End If
+    End With
+    Set shp = ffb.ConvertToShape
+    With shp.Line
+        .ForeColor.RGB = RGB(100, 100, 100)
+        .Weight = 1.5
+        .BeginArrowheadLength = msoArrowheadShort
+        .BeginArrowheadStyle = msoArrowheadOval
+        .BeginArrowheadWidth = msoArrowheadNarrow
+        .EndArrowheadLength = msoArrowheadLengthMedium
+        .EndArrowheadStyle = msoArrowheadTriangle
+        .EndArrowheadWidth = msoArrowheadWidthMedium
+    End With
+
+End Sub
+
+Sub ExportYellow() ' ExportYellowShapesToExcel
+    Dim pptSlide As slide
+    Dim pptShape As Shape
+    Dim pptApp As PowerPoint.Application
+    Dim excelApp As Object
+    Dim excelWorkbook As Object
+    Dim excelSheet As Object
+    Dim tbl As ListObject
+    Dim newRow As ListRow
+    Dim slideWidth As Single, slideHeight As Single
+    Dim centerX As Single, centerY As Single
+    Dim hexYellow As Long
+    Dim dataText As String
+    Dim produceVal As String, stakeholderVal As String
+    Dim todayDate As String
+    Dim fileName As String
+    Dim ctShape As Integer
+
+    ' Define yellow color (RGB(255, 247, 153))
+    hexYellow = RGB(255, 247, 153)
+    
+    On Error GoTo ErrHandler
+
+    ' Get active Excel instance
+    Set excelApp = GetObject(, "Excel.Application")
+    Set excelWorkbook = excelApp.ActiveWorkbook
+    Set excelSheet = excelApp.ActiveSheet
+    Set tbl = excelSheet.ListObjects("UserInput")
+    
+    todayDate = Format(Date, "yyyy-mm-dd")
+    fileName = ActivePresentation.Name
+    
+    slideWidth = ActivePresentation.PageSetup.slideWidth
+    slideHeight = ActivePresentation.PageSetup.slideHeight
+
+    ' Loop through all slides and shapes
+    For Each pptSlide In ActivePresentation.Slides
+        'Debug.Print "Slide Index: " & pptSlide.SlideIndex
+        For Each pptShape In pptSlide.Shapes
+            If pptShape.Type = msoTextBox Or pptShape.HasTextFrame Then
+                If pptShape.Fill.ForeColor.RGB = hexYellow Then
+                    ' Get shape center
+                    centerX = pptShape.Left + pptShape.Width / 2
+                    centerY = pptShape.Top + pptShape.Height / 2
+
+                    ' Determine values
+                    If centerX < slideWidth / 2 Then
+                        produceVal = "Received"
+                    Else
+                        produceVal = "Provided"
+                    End If
+
+                    If centerY < slideHeight / 2 Then
+                        stakeholderVal = "External"
+                    Else
+                        stakeholderVal = "Internal"
+                    End If
+
+                    ' Get text
+                    dataText = pptShape.TextFrame.TextRange.Text
+
+                    ' Add to Excel table
+                    If dataText <> "My Data Asset name" Then
+                        ctShape = ctShape + 1
+                        Set newRow = tbl.ListRows.Add
+                        With newRow.Range
+                            .Cells(1, tbl.ListColumns("Today").Index).Value = todayDate
+                            .Cells(1, tbl.ListColumns("DataAsset").Index).Value = dataText
+                            .Cells(1, tbl.ListColumns("Produce").Index).Value = produceVal
+                            .Cells(1, tbl.ListColumns("Stakeholder").Index).Value = stakeholderVal
+                            .Cells(1, tbl.ListColumns("Filename").Index).Value = fileName
+                            .Cells(1, tbl.ListColumns("SlideNr").Index).Value = pptSlide.SlideIndex
+                        End With
+                    End If
+                End If
+            End If
+        Next pptShape
+    Next pptSlide
+
+    MsgBox ctShape & " shapes exported to Excel table 'UserInput'.", vbInformation, BOX_TITLE
+    Exit Sub
+
+ErrHandler:
+    MsgBox "Error: " & Err.Description, vbCritical, BOX_TITLE
+End Sub
+
+Public Sub FixFont()
+    Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+
+    For Each sp In sr
+        ' Text formatting
+        With sp.TextFrame2
+            .WordWrap = msoTrue
+            .AutoSize = ppAutoSizeNone
+            .MarginLeft = 2.83    ' 0.1 cm
+            .MarginRight = 2.83
+            .MarginTop = 2.83
+            .MarginBottom = 2.83
+            .VerticalAnchor = msoAnchorTop
+
+            With .TextRange
+                .Font.Name = "Calibri"
+                .Font.Size = 12
+                '.Font.Fill.ForeColor.RGB = RGBHexToLong(fontColor)
+
+                With .ParagraphFormat
+                    .Alignment = ppAlignLeft
+                    .SpaceBefore = 6
+                    .SpaceAfter = 0
+                    .LineRuleWithin = msoTrue
+                    .FirstLineIndent = 0
+                    .LeftIndent = 0
+                    .SpaceWithin = 1
+                End With
+            End With
+        End With
+    Next
+
+End Sub
+
+Public Sub TextAlignTop()
+    Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+
+    For Each sp In sr
+        sp.TextFrame2.VerticalAnchor = msoAnchorTop
+    Next
+End Sub
+
+Public Sub TextAlignMiddle()
+    Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+
+    For Each sp In sr
+        sp.TextFrame2.VerticalAnchor = msoAnchorMiddle
+    Next
+End Sub
+
+Public Sub TextAlignBottom()
+    Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+
+    For Each sp In sr
+        sp.TextFrame2.VerticalAnchor = msoAnchorBottom
+    Next
+End Sub
+
+Public Sub TextSetMargin()
+    Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+
+    For Each sp In sr
+        With sp.TextFrame2
+            .MarginLeft = 2.83    ' 0.1 cm
+            .MarginRight = 2.83
+            .MarginTop = 2.83
+            .MarginBottom = 2.83
+        End With
+    Next
+End Sub
+
+Public Sub TextSetNoautofit()
+    Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+
+    For Each sp In sr
+        sp.TextFrame2.AutoSize = ppAutoSizeNone
+    Next
+End Sub
+
+Public Sub TextSetResizetoFit()
+    Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+
+    For Each sp In sr
+        sp.TextFrame2.AutoSize = ppAutoSizeShapeToFitText
+    Next
+End Sub
+
+Public Sub BoxBlue()
+    ApplyBoxStyle "#DCEAF5", "#A5B0B8", "#327BB8"
+End Sub
+
+Public Sub BoxYellow()
+    ApplyBoxStyle "#FFF2CC", "#BFB699", "#503500"
+End Sub
+
+Public Sub BoxSalmon()
+    ApplyBoxStyle "#FAC3B5", "#BC9288", "#333333"
+End Sub
+
+Public Sub BoxGreen()
+    ApplyBoxStyle "#D5E8D4", "#A0AE9F", "#2E4F2E"
+End Sub
+
+Public Sub BoxPurple()
+    ApplyBoxStyle "#E8DAEF", "#AEA4B3", "#4A235A"
+End Sub
+
+Public Sub BoxBlueHigh()
+    ApplyBoxStyle "#327BB8", "#265C8A", "#FFFFFF"
+End Sub
+
+Public Sub BoxOrangeHigh()
+    ApplyBoxStyle "#EF6C00", "#B35100", "#FFFFFF"
+End Sub
+
+Public Sub BoxPurpleHigh()
+    ApplyBoxStyle "#7D3C98", "#5E2D72", "#FFFFFF"
+End Sub
+
+Public Sub BoxPostIt()
+    FixFont
+    TextSetResizetoFit
+    ApplyBoxStyle "#FFFF00", "#990000", "#990000"
+End Sub
+
+Public Sub BoxTextNormal()
+    ApplyBoxStyle "", "", "#333333"
+End Sub
+
+Public Sub BoxTextBlue()
+    ApplyBoxStyle "", "", "#327BB8"
+End Sub
+
+' Core formatting function
+Private Sub ApplyBoxStyle(bgColor As String, borderColor As String, fontColor As String)
+    Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+
+    For Each sp In sr
+        ' Background color
+        If bgColor <> "" Then
+            sp.Fill.Visible = msoTrue
+            sp.Fill.ForeColor.RGB = RGBHexToLong(bgColor)
+        Else
+            sp.Fill.Visible = msoFalse
+        End If
+
+        ' Border color
+        If borderColor <> "" Then
+            sp.Line.Visible = msoTrue
+            sp.Line.ForeColor.RGB = RGBHexToLong(borderColor)
+        Else
+            sp.Line.Visible = msoFalse
+        End If
+    
+        With sp.TextFrame2
+            With .TextRange
+                .Font.Fill.ForeColor.RGB = RGBHexToLong(fontColor)
+            End With
+        End With
+    
+    Next sp
+End Sub
+
+
+Sub CreatePalette()
+    Const SQUARE_SIZE As Single = 13
+    Const START_X As Single = 909
+    Const START_Y As Single = 5
+    Const BOX_SPACING As Single = 2
+    Const COLUMN_SPACING As Single = 2
+
+    Dim slide As slide
+    Set slide = Application.ActiveWindow.View.slide
+
+    Dim allShapes As New Collection
+    Dim shapeBox As Shape
+
+    ' Block 1
+    Dim gradientBlue, gradientOrange, gradientPurple
+    gradientBlue = Split("#dceaf5,#d3e4f2,#cadeef,#c1d8eb,#b8d3e8,#afcde4,#a6c7e1,#9dc2dd,#94bcda,#8bb6d7,#82b0d3,#79abcf,#70a5cc,#67a0c8,#5e9ac5,#5594c2,#4c8ebe,#4389bb,#3a83b8,#327bb8", ",")
+    gradientOrange = Split("#fac3b5,#f9beab,#f9baa2,#f8b598,#f8b18f,#f7ac85,#f7a87b,#f6a372,#f59f68,#f59a5f,#f49655,#f4924c,#f38d42,#f38938,#f2842f,#f28025,#f17b1c,#f17712,#f07309,#ef6c00", ",")
+    gradientPurple = Split("#e8daef,#e2d2ea,#ddc9e6,#d7c1e1,#d1b9dd,#ccb0d8,#c6a8d3,#c0a0ce,#bb97ca,#b58fc5,#af87c1,#aa7ebc,#a476b7,#9e6eb3,#9965ae,#935da9,#8d55a5,#884ca0,#82449b,#7d3c98", ",")
+
+    Dim gradients(0 To 2) As Variant
+    gradients(0) = gradientBlue
+    gradients(1) = gradientOrange
+    gradients(2) = gradientPurple
+
+    Dim i As Integer, col As Integer
+    Dim xPos As Single, yPos As Single
+    Dim counter As Integer: counter = 1
+
+    ' === Block 1 ===
+    For i = 0 To 19
+        For col = 0 To 2
+            xPos = START_X + col * (SQUARE_SIZE + COLUMN_SPACING)
+            yPos = START_Y + i * (SQUARE_SIZE + BOX_SPACING)
+
+            Set shapeBox = slide.Shapes.AddShape(msoShapeRectangle, xPos, yPos, SQUARE_SIZE, SQUARE_SIZE)
+            shapeBox.Fill.ForeColor.RGB = RGBHexToLong(CStr(gradients(col)(i)))
+            shapeBox.Line.Visible = msoFalse
+            allShapes.Add shapeBox
+
+            With shapeBox.TextFrame2
+                .WordWrap = msoFalse
+                .VerticalAnchor = msoAnchorMiddle
+                .TextRange.ParagraphFormat.Alignment = msoAlignCenter
+                .TextRange.Font.Size = 12
+                .TextRange.Font.Name = "Calibri"
+                .TextRange.Font.Fill.ForeColor.RGB = IIf(i <= 9, RGBHexToLong("#333333"), RGB(255, 255, 255))
+                .TextRange.Text = IIf(col = (i Mod 3), CStr(counter), "")
+                If col = (i Mod 3) Then counter = counter + 1
+            End With
+        Next col
+    Next i
+
+    ' === Block 2 ===
+    Dim grad5Blue, grad5Orange, grad5Purple
+    grad5Blue = Split("#DCEAF5,#A9CDEC,#74B1D3,#4B94C0,#327BB8", ",")
+    grad5Orange = Split("#FAC3B5,#F6A882,#F18B51,#ED6E22,#EF6C00", ",")
+    grad5Purple = Split("#E8DAEF,#C9A7D8,#AA75C1,#8C48AA,#7D3C98", ",")
+
+    Dim grad5(0 To 2) As Variant
+    grad5(0) = grad5Blue
+    grad5(1) = grad5Orange
+    grad5(2) = grad5Purple
+
+    Dim offsetY As Single
+    offsetY = START_Y + 20 * (SQUARE_SIZE + BOX_SPACING) + BOX_SPACING * 2
+
+    For i = 0 To 4
+        For col = 0 To 2
+            xPos = START_X + col * (SQUARE_SIZE + COLUMN_SPACING)
+            yPos = offsetY + i * (SQUARE_SIZE + BOX_SPACING)
+
+            Set shapeBox = slide.Shapes.AddShape(msoShapeRectangle, xPos, yPos, SQUARE_SIZE, SQUARE_SIZE)
+            shapeBox.Fill.ForeColor.RGB = RGBHexToLong(CStr(grad5(col)(i)))
+            shapeBox.Line.Visible = msoFalse
+            allShapes.Add shapeBox
+
+            With shapeBox.TextFrame2
+                .WordWrap = msoFalse
+                .VerticalAnchor = msoAnchorMiddle
+                .TextRange.ParagraphFormat.Alignment = msoAlignCenter
+                .TextRange.Font.Size = 12
+                .TextRange.Font.Name = "Calibri"
+                .TextRange.Font.Fill.ForeColor.RGB = IIf(i <= 1, RGBHexToLong("#333333"), RGB(255, 255, 255))
+                .TextRange.Text = IIf(col = 0, CStr(i + 1), "")
+            End With
+        Next col
+    Next i
+
+    ' === Block 3 ===
+    offsetY = offsetY + 5 * (SQUARE_SIZE + BOX_SPACING) + BOX_SPACING * 2
+
+    Dim col1Colors, col2Colors
+    col1Colors = Array( _
+        Array("#DCEAF5", "#327BB8"), _
+        Array("#FFF2CC", "#503500"), _
+        Array("#FAC3B5", "#333333"), _
+        Array("#D5E8D4", "#2E4F2E"), _
+        Array("#E8DAEF", "#4A235A") _
+    )
+    col2Colors = Array( _
+        Array("#327BB8", "#FFFFFF"), _
+        Array("#EF6C00", "#FFFFFF"), _
+        Array("#7D3C98", "#FFFFFF") _
+    )
+
+    For i = 0 To 4
+        ' Column 1 (always drawn)
+        xPos = START_X
+        yPos = offsetY + i * (SQUARE_SIZE + BOX_SPACING)
+
+        Set shapeBox = slide.Shapes.AddShape(msoShapeRectangle, xPos, yPos, SQUARE_SIZE, SQUARE_SIZE)
+        shapeBox.Fill.ForeColor.RGB = RGBHexToLong(CStr(col1Colors(i)(0)))
+        shapeBox.Line.Visible = msoFalse
+        allShapes.Add shapeBox
+
+        With shapeBox.TextFrame2
+            .WordWrap = msoFalse
+            .VerticalAnchor = msoAnchorMiddle
+            .TextRange.ParagraphFormat.Alignment = msoAlignCenter
+            .TextRange.Font.Size = 12
+            .TextRange.Font.Name = "Calibri"
+            .TextRange.Font.Fill.ForeColor.RGB = RGBHexToLong(CStr(col1Colors(i)(1)))
+            .TextRange.Text = "T"
+        End With
+
+        ' Column 2 (only rows 0–2)
+        If i <= 2 Then
+            xPos = START_X + (SQUARE_SIZE + COLUMN_SPACING)
+
+            Set shapeBox = slide.Shapes.AddShape(msoShapeRectangle, xPos, yPos, SQUARE_SIZE, SQUARE_SIZE)
+            shapeBox.Fill.ForeColor.RGB = RGBHexToLong(CStr(col2Colors(i)(0)))
+            shapeBox.Line.Visible = msoFalse
+            allShapes.Add shapeBox
+
+            With shapeBox.TextFrame2
+                .WordWrap = msoFalse
+                .VerticalAnchor = msoAnchorMiddle
+                .TextRange.ParagraphFormat.Alignment = msoAlignCenter
+                .TextRange.Font.Size = 12
+                .TextRange.Font.Name = "Calibri"
+                .TextRange.Font.Fill.ForeColor.RGB = RGBHexToLong(CStr(col2Colors(i)(1)))
+                .TextRange.Text = "T"
+            End With
+        End If
+    Next i
+
+    ' === Group all ===
+    Dim shapeNames() As String
+    ReDim shapeNames(1 To allShapes.Count)
+    For i = 1 To allShapes.Count
+        shapeNames(i) = allShapes(i).Name
+    Next i
+
+    slide.Shapes.Range(shapeNames).Group
+End Sub
+
+
+Function RGBHexToLong(hexColor As String) As Long
+    Dim r As Long, g As Long, b As Long
+    If Left(hexColor, 1) = "#" Then hexColor = Mid(hexColor, 2)
+    If hexColor = "" Then
+        RGBHexToLong = RGB(255, 255, 255) ' default fallback if empty
+        Exit Function
+    End If
+    r = CLng("&H" & Mid(hexColor, 1, 2))
+    g = CLng("&H" & Mid(hexColor, 3, 2))
+    b = CLng("&H" & Mid(hexColor, 5, 2))
+    RGBHexToLong = RGB(r, g, b)
+End Function
+
+Sub ListColors()
+Dim sld As slide
+Dim newTextbox As Shape
+Dim bgColor As String, borderColor As String, fontColor As String
+Dim leftPos As Single, topPos As Single
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    Set sld = ActivePresentation.Slides(sr.Item(sr.Count).Parent.SlideIndex)
+    For Each sp In sr
+        '' Get RGB colors and convert to hex
+        'bgColor = ColorToHex(sp.Fill.ForeColor.RGB)
+        'borderColor = ColorToHex(sp.Line.ForeColor.RGB)
+        
+        fontColor = "(no font colour)" ' Default fallback
+        On Error Resume Next
+        If sp.TextFrame.HasText Then
+            fontColor = ColorToHex(sp.TextFrame.TextRange.Font.Color.RGB)
+        End If
+        On Error GoTo 0
+        ' Alternative
+        If sp.Fill.Visible = msoTrue Then
+            bgColor = ColorToHex(sp.Fill.ForeColor.RGB)
+        Else
+            bgColor = "(invisible)"
+        End If
+        If sp.Line.Visible = msoTrue Then
+            borderColor = ColorToHex(sp.Line.ForeColor.RGB)
+        Else
+            borderColor = "(invisible)"
+        End If
+    
+        ' Create textbox below the shape
+        leftPos = sp.Left
+        topPos = sp.Top + sp.Height '+ 5 ' 5 points below the shape
+        Set newTextbox = sld.Shapes.AddTextbox(Orientation:=msoTextOrientationHorizontal, _
+                                                Left:=leftPos, Top:=topPos, _
+                                                Width:=sp.Width, Height:=50)
+        newTextbox.TextFrame.TextRange.Text = "Background: " & bgColor & vbCrLf & _
+                                              "Border: " & borderColor & vbCrLf & _
+                                              "Font: " & fontColor
+        'newTextbox.TextFrame.TextRange.Text = "Background: " & bgColor & " + " & _
+        '                                      "Border: " & borderColor & " + " & _
+        '                                      "Font: " & fontColor
+        newTextbox.TextFrame.TextRange.Font.Name = "Arial"
+        newTextbox.TextFrame.TextRange.Font.Size = 10
+        newTextbox.TextFrame.TextRange.ParagraphFormat.SpaceBefore = 0
+        newTextbox.TextFrame.TextRange.ParagraphFormat.SpaceAfter = 0
+    
+    Next
+    Exit Sub
+    
+End Sub
+
+Function ColorToHex(lngColor As Long) As String
+    Dim r As Long, g As Long, b As Long
+    r = lngColor Mod 256
+    g = (lngColor \ 256) Mod 256
+    b = (lngColor \ 65536) Mod 256
+    ColorToHex = "#" & Right("0" & Hex(r), 2) & Right("0" & Hex(g), 2) & Right("0" & Hex(b), 2)
+End Function
+
+Sub SetSlideDate()
+    Dim s As slide
+    Dim slideShowDate As String
+
+    ' Use today's date in fixed format
+    slideShowDate = Format(Date, "yyyy-mm-dd")
+    
+    ' Set headers/footers on Slide Master
+    With ActivePresentation.SlideMaster.HeadersFooters
+        .DateAndTime.Visible = msoTrue
+        .DateAndTime.UseFormat = msoFalse
+        .DateAndTime.Text = slideShowDate
+        
+        .SlideNumber.Visible = msoTrue
+        .Footer.Visible = msoFalse
+        '.Footer.Visible = msoTrue 'msoFalse  #1/2
+        '.Footer.Text = "This file is for use by: " & Mid(Left(ActivePresentation.Name, Len(ActivePresentation.Name) - 5), 8) & " Branch"
+    End With
+    
+    ' Apply settings to each slide, including the first
+    For Each s In ActivePresentation.Slides
+        With s.HeadersFooters
+            .DateAndTime.Visible = msoTrue
+            .DateAndTime.UseFormat = msoFalse
+            .DateAndTime.Text = slideShowDate
+            
+            .SlideNumber.Visible = msoTrue
+            .Footer.Visible = msoFalse
+            '.Footer.Visible = msoTrue 'msoFalse  #2/2
+            '.Footer.Text = "This file is for use by: " & Mid(Left(ActivePresentation.Name, Len(ActivePresentation.Name) - 5), 8) & " Branch"
+        End With
+    Next s
+
+    MsgBox "Slide numbers and fixed date added. Footer removed.", vbInformation
+End Sub
+
+Public Sub JoinGuideTop()
+Const COORD_IN_HERE = 120
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        sp.Top = COORD_IN_HERE
+    Next
+End Sub
+
+Public Sub JoinGuideTopXtra()
+Const COORD_IN_HERE = 144
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        sp.Top = COORD_IN_HERE
+    Next
+End Sub
+
+Public Sub JoinGuideBottom()
+Const COORD_IN_HERE = 492
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        sp.Top = COORD_IN_HERE - sp.Height
+    Next
+End Sub
+
+Public Sub JoinGuideLeft()
+Const COORD_IN_HERE = 36
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        sp.Left = COORD_IN_HERE
+    Next
+End Sub
+
+Public Sub JoinGuideRight()
+Const COORD_IN_HERE = 924
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        sp.Left = COORD_IN_HERE - sp.Width
+    Next
+End Sub
+
+Private Function GetPptCells(ByRef aTopRow, ByRef aLeftCol, ByRef NumRows, ByRef NumCols) As PowerPoint.Table
+Dim shp As Shape
+Dim tbl As Table
+Dim selCell As Cell
+Dim startRow As Long, startCol As Long
+Dim r As Integer, c As Integer
+Dim hastable As Boolean, someRow As Boolean
+
+    Set GetPptCells = Nothing
+    aTopRow = 0: aLeftCol = 0
+    If ActiveWindow.Selection.Type = ppSelectionText Or ActiveWindow.Selection.Type = ppSelectionShapes Then
+        If ActiveWindow.Selection.ShapeRange.Count = 1 Then
+            Set shp = ActiveWindow.Selection.ShapeRange(1)
+            If Not shp Is Nothing And shp.hastable Then
+                Set tbl = shp.Table
+                For r = 1 To tbl.Rows.Count
+                    someRow = False
+                    For c = 1 To tbl.Columns.Count
+                        Set selCell = tbl.Cell(r, c)
+                        If selCell.selected And aTopRow = 0 Then
+                            aTopRow = r
+                            aLeftCol = c
+                        End If
+                        If selCell.selected And NumCols < c - aLeftCol + 1 Then
+                            NumCols = c - aLeftCol + 1
+                        End If
+                        If selCell.selected Then someRow = True
+                    Next c
+                    If someRow And NumRows < r - aTopRow + 1 Then NumRows = r - aTopRow + 1
+                Next r
+            End If
+        End If
+    End If
+    If aTopRow <> 0 Then Set GetPptCells = tbl
+    
+End Function
+
+Public Sub InCellCenter()
+Dim slide As slide
+Dim tb As Shape
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim tobj As PowerPoint.Table
+Dim c As Integer, r As Integer
+    
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    Set slide = ActiveWindow.View.slide
+    For Each sp In sr
+        For Each tb In slide.Shapes
+            If tb.hastable Then
+                If tb.Top <= sp.Top And tb.Top + tb.Height >= sp.Top And tb.Left <= sp.Left And tb.Left + tb.Width >= sp.Left Then
+                    Set tobj = tb.Table
+                    For r = 1 To tobj.Rows.Count
+                        For c = 1 To tobj.Columns.Count
+                            If tobj.Cell(r, c).Shape.Top < sp.Top + sp.Height / 2 And tobj.Cell(r, c).Shape.Top + tobj.Cell(r, c).Shape.Height > sp.Top + sp.Height / 2 Then ' Fit line
+                                If tobj.Cell(r, c).Shape.Left < sp.Left + sp.Width / 2 And tobj.Cell(r, c).Shape.Left + tobj.Cell(r, c).Shape.Width > sp.Left + sp.Width / 2 Then ' Fit Column
+                                    sp.Left = tobj.Cell(r, c).Shape.Left + tobj.Cell(r, c).Shape.Width / 2 - sp.Width / 2
+                                End If
+                            End If
+                        Next c
+                    Next r
+                End If
+            End If
+        Next tb
+    Next sp
+    'Debug.Print
+
+End Sub
+
+Public Sub InCellMidle()
+Dim slide As slide
+Dim tb As Shape
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim tobj As PowerPoint.Table
+Dim c As Integer, r As Integer
+    
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    Set slide = ActiveWindow.View.slide
+    For Each sp In sr
+        For Each tb In slide.Shapes
+            If tb.hastable Then
+                If tb.Top <= sp.Top And tb.Top + tb.Height >= sp.Top And tb.Left <= sp.Left And tb.Left + tb.Width >= sp.Left Then
+                    Set tobj = tb.Table
+                    For r = 1 To tobj.Rows.Count
+                        For c = 1 To tobj.Columns.Count
+                            If tobj.Cell(r, c).Shape.Top < sp.Top + sp.Height / 2 And tobj.Cell(r, c).Shape.Top + tobj.Cell(r, c).Shape.Height > sp.Top + sp.Height / 2 Then ' Fit line
+                                If tobj.Cell(r, c).Shape.Left < sp.Left + sp.Width / 2 And tobj.Cell(r, c).Shape.Left + tobj.Cell(r, c).Shape.Width > sp.Left + sp.Width / 2 Then ' Fit Column
+                                    sp.Top = tobj.Cell(r, c).Shape.Top + tobj.Cell(r, c).Shape.Height / 2 - sp.Height / 2
+                                End If
+                            End If
+                        Next c
+                    Next r
+                End If
+            End If
+        Next tb
+    Next sp
+    'Debug.Print
+
+End Sub
+
+Public Sub TableXls2Ppt()
+Dim pptTable As PowerPoint.Table
+Dim pTopRow As Integer, pLeftCol As Integer, pNumRows As Integer, pNumCols As Integer
+Dim xTopRow As Integer, xLeftCol As Integer
+Dim xls As Excel.Application, sh As Excel.Worksheet, wb As Excel.Workbook
+Dim xRowCol As New Collection, xColCol As New Collection ', xGoRow As New Collection, xGoCol As New Collection
+    ' Connect to Excel
+    On Error Resume Next
+    Set xls = GetObject(, "Excel.Application")
+    If xls Is Nothing Then
+        MsgBox "Excel is not open." & vbCrLf & "Quitting...", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    On Error GoTo 0
+    Set sh = xls.ActiveSheet
+    Set wb = xls.ActiveWorkbook
+    ' Detect PPT Range
+    Set pptTable = GetPptCells(pTopRow, pLeftCol, pNumRows, pNumCols)
+    If pptTable Is Nothing Then
+        MsgBox "Select a table, or some cells inside a table", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    ' Validade sizes are coherent
+    Dim xCel As Range
+    Dim xRange As Range
+    Set xRange = xls.Selection
+    If xRange.Areas.Count > 1 Then
+        MsgBox "Excel has a range of multiple areas", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    For Each xCel In xRange.Cells
+        If Not xCel.EntireRow.Hidden And Not xCel.EntireColumn.Hidden Then
+            On Error Resume Next
+            xRowCol.Add "x" & xCel.Row, "x" & xCel.Row
+            xColCol.Add "x" & xCel.Column, "x" & xCel.Column
+            On Error GoTo 0
+            If xTopRow = 0 Or xTopRow > xCel.Row Then xTopRow = xCel.Row
+            If xLeftCol = 0 Or xLeftCol > xCel.Column Then xLeftCol = xCel.Column
+        End If
+    Next xCel
+    If xRowCol.Count <> pNumRows Or xColCol.Count <> pNumCols Then
+        MsgBox "PPT and XLS area sizes are different", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    If MsgBox("Overwrite the area of " & pNumRows & "x" & pNumCols & " in the PPT Table?", vbQuestion + vbOKCancel) = vbOK Then
+        Dim stk As New cStack
+        stk.Init
+        For Each xCel In xRange.Cells
+            If Not xCel.EntireRow.Hidden And Not xCel.EntireColumn.Hidden Then stk.Push xCel.Text
+        Next xCel
+        Dim r As Integer, c As Integer, s As String
+        For r = pNumRows To 1 Step -1
+            For c = pNumCols To 1 Step -1
+                s = stk.Pop
+                pptTable.Cell(pTopRow + r - 1, pLeftCol + c - 1).Shape.TextFrame.TextRange.Text = s
+            Next c
+        Next r
+        MsgBox "Done, " & pNumRows * pNumCols & " values copied", vbInformation
+    End If
+    Exit Sub
+End Sub
+
+Public Sub ZorderSelected()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    For Each sp In sr
+        sp.Zorder msoBringToFront
+    Next
+
+End Sub
+
+Public Sub RoundCorners()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Const ADIV = 3
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        With sp
+            If .AutoShapeType = msoShapeRoundedRectangle Then
+                If .Width < .Height Then
+                    .Adjustments(1) = ADIV / .Width
+                Else ' .Width >= .Height
+                    .Adjustments(1) = ADIV / .Height
+                End If
+            End If
+        End With
+    Next
+End Sub
+
+Public Sub Move2Center()
+' was CenterOnLast
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim last As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set last = sr.Item(sr.Count)
+    For Each sp In sr
+        sp.Left = last.Left + last.Width / 2 - sp.Width / 2
+    Next sp
+End Sub
+
+Public Sub MoveCenter2Left()
+' was CenterOnLast
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim last As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set last = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not sp Is last Then sp.Left = last.Left - sp.Width / 2
+    Next sp
+End Sub
+
+Public Sub MoveCenter2Right()
+' was CenterOnLast
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim last As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set last = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not sp Is last Then sp.Left = last.Left + last.Width - sp.Width / 2
+    Next sp
+End Sub
+
+Public Sub Move2Midle()
+' was MidleOnLast
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim last As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set last = sr.Item(sr.Count)
+    For Each sp In sr
+        sp.Top = last.Top + last.Height / 2 - sp.Height / 2
+    Next sp
+End Sub
+
+Public Sub MoveMidle2Top()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim last As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set last = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not sp Is last Then sp.Top = last.Top - sp.Height / 2
+    Next sp
+End Sub
+
+Public Sub MoveMidle2Bottom()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim last As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set last = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not sp Is last Then sp.Top = last.Top + last.Height - sp.Height / 2
+    Next sp
+End Sub
+
+Public Sub SwapObjects()
+Dim priLeft As New Collection, priTop As New Collection
+Dim secLeft As New Collection, secTop As New Collection
+Dim qts As Integer, i As Integer
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    If sr.Count Mod 2 <> 0 Then
+        MsgBox "Select a pair number of objects to swap" & vbCrLf & "Quitting...", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    qts = sr.Count / 2
+    i = 1
+    For Each sp In sr
+        If i <= qts Then
+            priLeft.Add sp.Left, "i" & i
+            priTop.Add sp.Top, "i" & i
+        Else
+            secLeft.Add sp.Left, "i" & i - qts
+            secTop.Add sp.Top, "i" & i - qts
+        End If
+        i = i + 1
+    Next sp
+    i = 1
+    For Each sp In sr
+        If i <= qts Then
+            sp.Top = secTop.Item("i" & i)
+            sp.Left = secLeft.Item("i" & i)
+        Else
+            sp.Top = priTop.Item("i" & i - qts)
+            sp.Left = priLeft.Item("i" & i - qts)
+        End If
+        i = i + 1
+    Next sp
+
+End Sub
+
+Public Sub SwapText()
+Dim txtLeft As New Collection
+Dim txtRight As New Collection
+Dim qts As Integer, i As Integer
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    If sr.Count Mod 2 <> 0 Then
+        MsgBox "Select a pair number of objects to swap" & vbCrLf & "Quitting...", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    qts = sr.Count / 2
+    i = 1
+    For Each sp In sr
+        If i <= qts Then
+            txtLeft.Add sp.TextFrame.TextRange.Text, "i" & i
+        Else
+            txtRight.Add sp.TextFrame.TextRange.Text, "i" & i - qts
+        End If
+        i = i + 1
+    Next sp
+    i = 1
+    For Each sp In sr
+        If i <= qts Then
+            sp.TextFrame.TextRange.Text = txtRight.Item("i" & i)
+        Else
+            sp.TextFrame.TextRange.Text = txtLeft.Item("i" & i - qts)
+        End If
+        i = i + 1
+    Next sp
+
+End Sub
+
+Public Sub ColorBorder()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim r As Long, g As Long, b As Long, q As Long, aColor As Long
+Const STEPS = 4
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        aColor = sp.Fill.ForeColor.RGB
+        r = aColor Mod 256
+        q = Int(aColor / 256)
+        g = q Mod 256
+        b = Int(q / 256)
+        r = Round(r - (r / STEPS), 0)
+        g = Round(g - (g / STEPS), 0)
+        b = Round(b - (b / STEPS), 0)
+        sp.Line.DashStyle = msoLineDashDot
+        sp.Line.ForeColor.RGB = RGB(r, g, b)
+        sp.Line.DashStyle = msoLineSolid
+        sp.Line.Weight = 0.25
+    Next
+
+End Sub
+
+Public Sub ColorLighter()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim r As Long, g As Long, b As Long, q As Long, aColor As Long
+Const STEPS = 5
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        aColor = sp.Fill.ForeColor.RGB
+        r = aColor Mod 256
+        q = Int(aColor / 256)
+        g = q Mod 256
+        b = Int(q / 256)
+        r = Round(r + ((255 - r) / STEPS), 0)
+        g = Round(g + ((255 - g) / STEPS), 0)
+        b = Round(b + ((255 - b) / STEPS), 0)
+        sp.Fill.ForeColor.RGB = RGB(r, g, b)
+    Next
+
+End Sub
+
+Public Sub SizeSet()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim model As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set model = sr.Item(sr.Count)
+    For Each sp In sr
+        sp.Width = model.Width
+        sp.Height = model.Height
+    Next
+End Sub
+
+Public Sub SizeWidth()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim model As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set model = sr.Item(sr.Count)
+    For Each sp In sr
+        sp.Width = model.Width
+    Next
+End Sub
+
+Public Sub SizeWidthLeft()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim model As Shape, dir As Double
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set model = sr.Item(sr.Count)
+    For Each sp In sr
+        dir = sp.Left + sp.Width
+        sp.Width = model.Width
+        sp.Left = dir - sp.Width
+    Next
+End Sub
+
+Public Sub SizeHeight()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim model As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set model = sr.Item(sr.Count)
+    For Each sp In sr
+        sp.Height = model.Height
+    Next
+End Sub
+
+Public Sub SizeHeightTop()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim model As Shape, baixo As Double
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set model = sr.Item(sr.Count)
+    For Each sp In sr
+        baixo = sp.Top + sp.Height
+        sp.Height = model.Height
+        sp.Top = baixo - sp.Height
+    Next
+End Sub
+
+
+Public Sub SizeHor2Start()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim ref As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set ref = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not (sp Is ref) Then If sp.Left < ref.Left Then sp.Width = ref.Left - sp.Left
+    Next
+End Sub
+
+Public Sub SizeHor2StartBack()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim ref As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set ref = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not (sp Is ref) Then
+            If sp.Left > ref.Left Then
+                sp.Width = sp.Width + sp.Left - ref.Left
+                sp.Left = ref.Left
+            End If
+        End If
+    Next
+End Sub
+
+Public Sub SizeHor2End()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim ref As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set ref = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not (sp Is ref) Then If sp.Left < ref.Left + ref.Width Then sp.Width = ref.Left - sp.Left + ref.Width
+    Next
+End Sub
+
+Public Sub SizeVer2Start()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim ref As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set ref = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not (sp Is ref) Then If sp.Top < ref.Top Then sp.Height = ref.Top - sp.Top
+    Next
+End Sub
+
+Public Sub SizeVer2StartBack()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim ref As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set ref = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not (sp Is ref) Then
+            If sp.Top > ref.Top Then
+                sp.Height = sp.Height + sp.Top - ref.Top
+                sp.Top = ref.Top
+            End If
+        End If
+    Next
+End Sub
+
+Public Sub SizeVer2End()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim ref As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set ref = sr.Item(sr.Count)
+    For Each sp In sr
+        If Not (sp Is ref) Then If sp.Top < ref.Top + ref.Height Then sp.Height = ref.Top - sp.Top + ref.Height
+    Next
+End Sub
+
+Public Sub SizeVer2Slide()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        sp.Height = ActivePresentation.PageSetup.slideHeight - sp.Top
+    Next
+End Sub
+
+Public Sub SizeHor2Slide()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    For Each sp In sr
+        sp.Width = ActivePresentation.PageSetup.slideWidth - sp.Left
+    Next
+End Sub
+
+Public Sub Size2SpaceHor()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim a1 As Shape, a2 As Shape, a3 As Shape
+Dim branco As Double, cheio As Double
+Dim antes As Shape, qts As Integer
+    If Not selectedObjects(sr, isInsideGroup, 3) Then Exit Sub
+    Set a1 = sr.Item(1)
+    Set a2 = sr.Item(2)
+    Set a3 = sr.Item(sr.Count)
+    branco = a2.Left - (a1.Left + a1.Width)
+    If branco < 0 Then
+        MsgBox "There is no space between elements 1 and 2" & vbCrLf & "Quitting...", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    cheio = (a3.Left + a3.Width - a1.Left - (sr.Count - 1) * branco) / sr.Count
+    If cheio <= 0 Then
+        MsgBox "Not enough space" & vbCrLf & "Quitting...", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    qts = 0
+    For Each sp In sr
+        qts = qts + 1
+        sp.Width = cheio
+        If qts > 1 Then sp.Left = antes.Left + antes.Width + branco
+        Set antes = sp
+    Next sp
+End Sub
+
+Public Sub Size0SpaceHor()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim a1 As Shape, a2 As Shape, a3 As Shape
+Dim cheio As Double
+Dim antes As Shape, qts As Integer
+    If Not selectedObjects(sr, isInsideGroup, 3) Then Exit Sub
+    Set a1 = sr.Item(1)
+    Set a2 = sr.Item(2)
+    Set a3 = sr.Item(sr.Count)
+    cheio = (a3.Left + a3.Width - a1.Left) / sr.Count
+    If cheio <= 0 Then
+        MsgBox "Not enough space" & vbCrLf & "Quitting...", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    qts = 0
+    For Each sp In sr
+        qts = qts + 1
+        sp.Width = cheio
+        If qts > 1 Then sp.Left = antes.Left + antes.Width
+        Set antes = sp
+    Next sp
+End Sub
+
+Public Sub Size2SpaceVer()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim a1 As Shape, a2 As Shape, a3 As Shape
+Dim branco As Double, cheio As Double
+Dim antes As Shape, qts As Integer
+    If Not selectedObjects(sr, isInsideGroup, 3) Then Exit Sub
+    Set a1 = sr.Item(1)
+    Set a2 = sr.Item(2)
+    Set a3 = sr.Item(sr.Count)
+    branco = a2.Top - (a1.Top + a1.Height)
+    If branco < 0 Then
+        MsgBox "There is no space between elements 1 and 2" & vbCrLf & "Quitting...", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    cheio = (a3.Top + a3.Height - a1.Top - (sr.Count - 1) * branco) / sr.Count
+    If cheio <= 0 Then
+        MsgBox "Not enough space" & vbCrLf & "Quitting...", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    qts = 0
+    For Each sp In sr
+        qts = qts + 1
+        sp.Height = cheio
+        If qts > 1 Then sp.Top = antes.Top + antes.Height + branco
+        Set antes = sp
+    Next sp
+End Sub
+
+Public Sub Size0SpaceVer()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim a1 As Shape, a2 As Shape, a3 As Shape
+Dim cheio As Double
+Dim antes As Shape, qts As Integer
+    If Not selectedObjects(sr, isInsideGroup, 3) Then Exit Sub
+    Set a1 = sr.Item(1)
+    Set a2 = sr.Item(2)
+    Set a3 = sr.Item(sr.Count)
+    cheio = (a3.Top + a3.Height - a1.Top) / sr.Count
+    If cheio <= 0 Then
+        MsgBox "Not enough space" & vbCrLf & "Quitting...", vbCritical, BOX_TITLE
+        Exit Sub
+    End If
+    qts = 0
+    For Each sp In sr
+        qts = qts + 1
+        sp.Height = cheio
+        If qts > 1 Then sp.Top = antes.Top + antes.Height
+        Set antes = sp
+    Next sp
+End Sub
+'-------------------------------------------------------------------------------------------------------
+
+Public Sub JoinRight()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim antes As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set antes = Nothing
+    For Each sp In sr
+        If Not antes Is Nothing Then sp.Left = antes.Left + antes.Width
+        Set antes = sp
+    Next
+End Sub
+
+Public Sub JoinLeft()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim antes As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set antes = Nothing
+    For Each sp In sr
+        If Not antes Is Nothing Then sp.Left = antes.Left - sp.Width
+        Set antes = sp
+    Next
+    
+End Sub
+
+Public Sub JoinBottom()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim antes As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set antes = Nothing
+    For Each sp In sr
+        If Not antes Is Nothing Then sp.Top = antes.Top + antes.Height
+        Set antes = sp
+    Next
+End Sub
+
+Public Sub JoinTop()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim antes As Shape
+    If Not selectedObjects(sr, isInsideGroup, 2) Then Exit Sub
+    Set antes = Nothing
+    For Each sp In sr
+        If Not antes Is Nothing Then sp.Top = antes.Top - sp.Height
+        Set antes = sp
+    Next
+End Sub
+
+Public Sub KeepHor()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim a1 As Shape, a2 As Shape
+    If Not selectedObjects(sr, isInsideGroup, 3) Then Exit Sub
+    Set a1 = sr.Item(1)
+    Set a2 = sr.Item(2)
+    If a2.Left > a1.Left + a1.Width Then
+        KeepHorBranco sr, 3
+    ElseIf a2.Left > a1.Left Then
+        KeepHorCheio sr, 3
+    End If
+End Sub
+
+Public Sub KeepHorModel()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim a1 As Shape, a2 As Shape
+    If Not selectedObjects(sr, isInsideGroup, 4) Then Exit Sub
+    Set a1 = sr.Item(1)
+    Set a2 = sr.Item(2)
+    If a2.Left > a1.Left + a1.Width Then
+        KeepHorBranco sr, 4
+    ElseIf a2.Left > a1.Left Then
+        KeepHorCheio sr, 4
+    End If
+End Sub
+
+Private Sub KeepHorBranco(sr As ShapeRange, qualArruma As Integer)
+Dim antes As Shape, qts As Integer, DistQuer As Double
+Dim sp As Shape
+    qts = 0
+    For Each sp In sr
+        qts = qts + 1
+        If qts = 2 Then DistQuer = sp.Left - (antes.Left + antes.Width)
+        If qts >= qualArruma Then sp.Left = antes.Left + antes.Width + DistQuer
+        Set antes = sp
+    Next
+End Sub
+
+Private Sub KeepHorCheio(sr As ShapeRange, qualArruma As Integer)
+Dim antes As Shape, qts As Integer, DistQuer As Double
+Dim sp As Shape
+    qts = 0
+    For Each sp In sr
+        qts = qts + 1
+        If qts = 2 Then DistQuer = sp.Left - antes.Left
+        If qts >= qualArruma Then sp.Left = antes.Left + DistQuer
+        Set antes = sp
+    Next
+End Sub
+
+Public Sub KeepVer()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim a1 As Shape, a2 As Shape
+    If Not selectedObjects(sr, isInsideGroup, 3) Then Exit Sub
+    Set a1 = sr.Item(1)
+    Set a2 = sr.Item(2)
+    If a2.Top > a1.Top + a1.Height Then
+        KeepVerBranco sr, 3
+    ElseIf a2.Top > a1.Top Then
+        KeepVerCheio sr, 3
+    End If
+End Sub
+
+Public Sub KeepVerModel()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim a1 As Shape, a2 As Shape
+    If Not selectedObjects(sr, isInsideGroup, 4) Then Exit Sub
+    Set a1 = sr.Item(1)
+    Set a2 = sr.Item(2)
+    If a2.Top > a1.Top + a1.Height Then
+        KeepVerBranco sr, 4
+    ElseIf a2.Top > a1.Top Then
+        KeepVerCheio sr, 4
+    End If
+End Sub
+
+Private Sub KeepVerBranco(sr As ShapeRange, qualArruma As Integer)
+Dim antes As Shape, qts As Integer, DistQuer As Double
+Dim sp As Shape
+    qts = 0
+    For Each sp In sr
+        qts = qts + 1
+        If qts = 2 Then DistQuer = sp.Top - (antes.Top + antes.Height)
+        If qts >= qualArruma Then sp.Top = antes.Top + antes.Height + DistQuer
+        Set antes = sp
+    Next
+End Sub
+
+Private Sub KeepVerCheio(sr As ShapeRange, qualArruma As Integer)
+Dim antes As Shape, qts As Integer, DistQuer As Double
+Dim sp As Shape
+    qts = 0
+    For Each sp In sr
+        qts = qts + 1
+        If qts = 2 Then DistQuer = sp.Top - antes.Top
+        If qts >= qualArruma Then sp.Top = antes.Top + DistQuer
+        Set antes = sp
+    Next
+End Sub
+
+
+'------------------------------------------------------------------------------------------
+Public Function selectedObjects(ByRef aShareRange As ShapeRange, ByRef isInsideGroup As Boolean, minCnt As Integer) As Boolean
+Dim sr As ShapeRange
+    If Application.ActiveWindow.Selection.Type <> ppSelectionShapes Then
+        MsgBox "Select " & minCnt & " or more shapes" & vbCrLf & "Quiting...", vbCritical, BOX_TITLE
+        selectedObjects = False
+        Exit Function
+    End If
+    If Application.ActiveWindow.Selection.HasChildShapeRange Then
+        Set sr = Application.ActiveWindow.Selection.ChildShapeRange
+        isInsideGroup = True
+    Else
+        Set sr = Application.ActiveWindow.Selection.ShapeRange
+        isInsideGroup = False
+    End If
+    If sr.Count < minCnt Then
+        MsgBox "Select " & minCnt & " or more shapes" & vbCrLf & "Quiting...", vbCritical, BOX_TITLE
+        selectedObjects = False
+        Exit Function
+    End If
+    Set aShareRange = sr
+    selectedObjects = True
+    Exit Function
+
+End Function
+
