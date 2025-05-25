@@ -1,0 +1,68 @@
+Attribute VB_Name = "ShadowParallelogram_M"
+Option Explicit
+
+
+Sub doShadowParallelogram(aSlide As PowerPoint.slide, aShape As PowerPoint.Shape)
+Dim aSkew As Double, aHorizontalFlip As Boolean
+Dim ffb As PowerPoint.FreeformBuilder, res As PowerPoint.Shape
+Dim origRGB As Long, r As Long, g As Long, b As Long, amountDark As Single
+Const SHADOW_HEIGHT = 15
+    Dim inset As Double
+    Dim resultX As Double, resultY As Double
+    
+    aSkew = aShape.Adjustments(1)
+    aHorizontalFlip = aShape.HorizontalFlip
+    ' horizontal inset = skew ratio × shape height
+    inset = aSkew * aShape.Height
+    
+    If Not aHorizontalFlip Then
+        ' bottom-right = (top-left X  – inset + Width, top-left Y + Height)
+        'resultX = x - inset + Width
+        'resultY = y + Height
+        'Debug.Print "Bottom-Right (skewed): (" & resultX & ", " & resultY & ")"
+    Else
+        ' bottom-left  = (top-left X + inset, top-left Y + Height)
+        resultX = aShape.Left + inset
+        resultY = aShape.Top + aShape.Height
+        origRGB = aShape.Fill.ForeColor.RGB
+        r = origRGB And &HFF               ' red component
+        g = (origRGB \ &H100) And &HFF     ' green component
+        b = (origRGB \ &H10000) And &HFF   ' blue component
+        'Debug.Print "Bottom-Left  (skewed): (" & resultX & ", " & resultY & ")"
+        Set ffb = aSlide.Shapes.BuildFreeform(msoEditingCorner, aShape.Left, aShape.Top)
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, resultY
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, resultY + SHADOW_HEIGHT
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left, aShape.Top + SHADOW_HEIGHT
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left, aShape.Top
+        Set res = ffb.ConvertToShape
+        amountDark = 0.15 ' Between 0 (no change) and 1 (totaly black)
+        res.Fill.ForeColor.RGB = RGB(CInt(r - r * amountDark), CInt(g - g * amountDark), CInt(b - b * amountDark))
+        res.Line.Visible = msoFalse
+        Set ffb = aSlide.Shapes.BuildFreeform(msoEditingCorner, resultX, aShape.Top + aShape.Height)
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left + aShape.Width, resultY
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left + aShape.Width, resultY + SHADOW_HEIGHT
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, aShape.Top + aShape.Height + SHADOW_HEIGHT
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, aShape.Top + aShape.Height
+        Set res = ffb.ConvertToShape
+        amountDark = 0.075
+        res.Fill.ForeColor.RGB = RGB(CInt(r - r * amountDark), CInt(g - g * amountDark), CInt(b - b * amountDark))
+        res.Line.Visible = msoFalse
+        aShape.Line.Visible = msoFalse
+    End If
+End Sub
+
+Sub ShadowParallelogram()
+Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
+Dim sld As PowerPoint.slide
+    If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
+    Set sld = Application.ActiveWindow.View.slide
+    For Each sp In sr
+        If sp.AutoShapeType = msoShapeParallelogram Then
+            doShadowParallelogram sld, sp
+        End If
+    Next sp
+    
+End Sub
+
+
+
