@@ -5,6 +5,7 @@ Option Explicit
 ' Microsoft Excel 16.0 Object Library
 
 ' Revision
+' 2025-05-27 ExportYellow updates ContactPerson
 ' 2025-05-25 ShadowParallelogram
 ' 2025-05-24 AdjustArrows
 ' 2025-05-20 BoxPostIt, FixFont, ExportYellow
@@ -431,6 +432,8 @@ Sub ExportYellow() ' ExportYellowShapesToExcel
     Dim todayDate As String
     Dim fileName As String
     Dim ctShape As Integer
+    Dim contactPerson As String
+    Const LABEL_CONTACT = "Point of Contact in this Branch for this topic: "
 
     ' Define yellow color (RGB(255, 247, 153))
     hexYellow = RGB(255, 247, 153)
@@ -448,6 +451,19 @@ Sub ExportYellow() ' ExportYellowShapesToExcel
     
     slideWidth = ActivePresentation.PageSetup.slideWidth
     slideHeight = ActivePresentation.PageSetup.slideHeight
+    
+    For Each pptSlide In ActivePresentation.Slides
+        For Each pptShape In pptSlide.Shapes
+            If contactPerson = "" Then
+                If pptShape.HasTextFrame Then
+                    If Left(pptShape.TextFrame.TextRange.Text, Len(LABEL_CONTACT)) = LABEL_CONTACT Then
+                        contactPerson = Mid(pptShape.TextFrame.TextRange.Text, Len(LABEL_CONTACT) + 1)
+                        Exit For
+                    End If
+                End If
+            End If
+        Next pptShape
+    Next pptSlide
 
     ' Loop through all slides and shapes
     For Each pptSlide In ActivePresentation.Slides
@@ -486,6 +502,7 @@ Sub ExportYellow() ' ExportYellowShapesToExcel
                             .Cells(1, tbl.ListColumns("Stakeholder").Index).Value = stakeholderVal
                             .Cells(1, tbl.ListColumns("Filename").Index).Value = fileName
                             .Cells(1, tbl.ListColumns("SlideNr").Index).Value = pptSlide.SlideIndex
+                            .Cells(1, tbl.ListColumns("ContactPerson").Index).Value = contactPerson
                         End With
                     End If
                 End If
@@ -1761,6 +1778,5 @@ Dim sr As ShapeRange
     Exit Function
 
 End Function
-
 
 
