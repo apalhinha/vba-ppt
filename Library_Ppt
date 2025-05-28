@@ -5,6 +5,7 @@ Option Explicit
 ' Microsoft Excel 16.0 Object Library
 
 ' Revision
+' 2025-05-28 BoxStyle sets shape outline
 ' 2025-05-27 ExportYellow updates ContactPerson
 ' 2025-05-25 ShadowParallelogram
 ' 2025-05-24 AdjustArrows
@@ -670,6 +671,8 @@ Private Sub ApplyBoxStyle(bgColor As String, borderColor As String, fontColor As
         Else
             sp.Fill.Visible = msoFalse
         End If
+        sp.Line.Visible = msoTrue
+        sp.Line.Weight = 0.25   ' ¼ pt
 
         ' Border color
         If borderColor <> "" Then
@@ -1778,5 +1781,4 @@ Dim sr As ShapeRange
     Exit Function
 
 End Function
-
 
