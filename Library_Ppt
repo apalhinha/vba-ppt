@@ -199,14 +199,14 @@ Dim errmsg As String, previous As String
     Else
         Set shp = ffb.ConvertToShape
         With shp.Line
-            .ForeColor.RGB = RGB(100, 100, 100)
+            .ForeColor.RGB = RGB(166, 166, 166)
             .Weight = 1.5
             .BeginArrowheadLength = msoArrowheadShort
             .BeginArrowheadStyle = msoArrowheadOval
             .BeginArrowheadWidth = msoArrowheadNarrow
-            .EndArrowheadLength = msoArrowheadLengthMedium
+            .EndArrowheadLength = msoArrowheadShort 'msoArrowheadLengthMedium
             .EndArrowheadStyle = msoArrowheadTriangle
-            .EndArrowheadWidth = msoArrowheadWidthMedium
+            .EndArrowheadWidth = msoArrowheadNarrow 'msoArrowheadWidthMedium
         End With
         CreateBezierLine = True
     End If
