@@ -5,6 +5,7 @@ Option Explicit
 ' Microsoft Excel 16.0 Object Library
 
 ' Revision
+' 2025-05-30 AlignFlowObjects can start with a line
 ' 2025-05-29 AlignFlowObjects + AlignFlowModel
 ' 2025-05-28 BoxStyle sets shape outline
 ' 2025-05-27 ExportYellow updates ContactPerson
@@ -33,6 +34,8 @@ Const Y_COORD = 2
 Const ZERO_FLOAT = 0.00001
 Const ARADIUS = 8
 Const SHADOW_HEIGHT_FOR_PARALLELOGRAM = 15
+Const BEZIERS_GREY_COLOR = 166 ' RGB(value, value, value)
+Const BEZIERS_LINE_WIDTH = 2.25
 
 Sub AlignFlowObjects()
   doAlignFlowObjects 0
@@ -63,8 +66,7 @@ Dim distSpace As Double, prevShape As PowerPoint.Shape
     If Not firstIsLine And secondIsLine Then
         distSpace = sr(2).Left - sr(1).Left - sr(1).Width
     ElseIf firstIsLine And Not secondIsLine Then
-        MsgBox "Must start with an object, not a line." & vbCrLf & "Quitting...", vbExclamation
-        Exit Sub
+        distSpace = sr(2).Left - sr(1).Left - sr(1).Width
     Else
         MsgBox "First two objects must alternate (object/line or line/object).", vbExclamation
         Exit Sub
@@ -96,6 +98,7 @@ Dim distSpace As Double, prevShape As PowerPoint.Shape
         Set prevShape = sp
         isPrevLine = isCurrLine
     Next i
+    Exit Sub
 End Sub
 
 Function IsLineType(sp As Shape) As Boolean
@@ -302,8 +305,8 @@ Dim errmsg As String, previous As String
     Else
         Set shp = ffb.ConvertToShape
         With shp.Line
-            .ForeColor.RGB = RGB(100, 100, 100)
-            .Weight = 1.5
+            .ForeColor.RGB = RGB(BEZIERS_GREY_COLOR, BEZIERS_GREY_COLOR, BEZIERS_GREY_COLOR)
+            .Weight = BEZIERS_LINE_WIDTH
             .BeginArrowheadLength = msoArrowheadShort
             .BeginArrowheadStyle = msoArrowheadOval
             .BeginArrowheadWidth = msoArrowheadNarrow
@@ -1884,7 +1887,5 @@ Dim sr As ShapeRange
     Exit Function
 
 End Function
-
-
 
 
