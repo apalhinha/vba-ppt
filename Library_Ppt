@@ -5,6 +5,7 @@ Option Explicit
 ' Microsoft Excel 16.0 Object Library
 
 ' Revision
+' 2025-05-29 AlignFlowObjects + AlignFlowModel
 ' 2025-05-28 BoxStyle sets shape outline
 ' 2025-05-27 ExportYellow updates ContactPerson
 ' 2025-05-25 ShadowParallelogram
@@ -15,15 +16,15 @@ Option Explicit
 ' 2025-05-08 CreatePalette TextSetMargin TextSetNoautofit TextSetResizetoFit TextAlignTop TextAlignMiddle TextAlignBottom
 ' 2025-05-07 ListColors
 ' 2025-05-05 SetSlideDate
-' 2025-05-02 JoinGuideTop, JoinGuideTopXtra, JoinGuideLeft, JoinGuideRight
-' 2025-04-30 SetTopGuide (now deprecated)
-' 2025-04-02 MoveCenter2Left, MoveCenter2Right, MoveMidle2Top, MoveMidle2Bottom
-' 2025-02-06 Size0SpaceHor, Size0SpaceVer, SizeHor2StartBack, SizeVer2StartBack
-' 2024-12-06 TableXls 2 Ppt
+' 2024-05-02 JoinGuideTop, JoinGuideTopXtra, JoinGuideLeft, JoinGuideRight
+' 2024-04-30 SetTopGuide (now deprecated)
+' 2024-04-02 MoveCenter2Left, MoveCenter2Right, MoveMidle2Top, MoveMidle2Bottom
+' 2023-11-06 Size0SpaceHor, Size0SpaceVer, SizeHor2StartBack, SizeVer2StartBack
+' 2023-10-06 TableXls 2 Ppt
 
-' Join Left, Join Right, Join Bottom, Join Top | KeepHor, KeepVer, KeepHor Model, KeepVer Model, Move 2 Center, Move to Midle |
+' Migrated: Join Left, Join Right, Join Bottom, Join Top | KeepHor, KeepVer, KeepHor Model, KeepVer Model, Move 2 Center, Move to Midle |
 ' Size Set, Size Width, Size Width Left, Size Height, Size Height Top, SizeHor 2Start Back, SizeHor 2Start, SizeHor 2End, SizeHor 2Slide
-' (cont) SizeVer 2Start Back, SizeVer 2Start, SizeVer 2End, SizeVer 2Slide, Size 2Space Hor, Size 0Space Hor, Size 2Space Ver, Size 0Space Ver |
+' SizeVer 2Start Back, SizeVer 2Start, SizeVer 2End, SizeVer 2Slide, Size 2Space Hor, Size 0Space Hor, Size 2Space Ver, Size 0Space Ver |
 ' Color Border, Color Lighter | Swap Objects, Swap Text, Round Corners, Zorder Selected | Table Xls2ppt, InCell Center, InCell Midle
 
 Global Const BOX_TITLE = "PPT Automation"
@@ -31,12 +32,114 @@ Const X_COORD = 1
 Const Y_COORD = 2
 Const ZERO_FLOAT = 0.00001
 Const ARADIUS = 8
+Const SHADOW_HEIGHT_FOR_PARALLELOGRAM = 15
+
+Sub AlignFlowObjects()
+  doAlignFlowObjects 0
+End Sub
+
+Sub AlignFlowModel()
+  doAlignFlowObjects 2
+End Sub
+
+Sub doAlignFlowObjects(initialSKip As Integer)
+Dim sp As Shape, sr As ShapeRange
+Dim isInsideGroup As Boolean
+Dim i As Integer
+Dim isPrevLine As Boolean, isCurrLine As Boolean
+Dim distSpace As Double, prevShape As PowerPoint.Shape
+
+    If initialSKip > 0 Then
+        If Not selectedObjects(sr, isInsideGroup, 4) Then Exit Sub
+    Else
+        If Not selectedObjects(sr, isInsideGroup, 3) Then Exit Sub
+    End If
+
+    ' Determine type of first two shapes
+    Dim firstIsLine As Boolean, secondIsLine As Boolean
+    firstIsLine = IsLineType(sr(1))
+    secondIsLine = IsLineType(sr(2))
+
+    If Not firstIsLine And secondIsLine Then
+        distSpace = sr(2).Left - sr(1).Left - sr(1).Width
+    ElseIf firstIsLine And Not secondIsLine Then
+        MsgBox "Must start with an object, not a line." & vbCrLf & "Quitting...", vbExclamation
+        Exit Sub
+    Else
+        MsgBox "First two objects must alternate (object/line or line/object).", vbExclamation
+        Exit Sub
+    End If
+
+    ' Start alternation check from third shape onward
+    isPrevLine = secondIsLine
+    Set prevShape = Nothing
+    For i = initialSKip + 1 To sr.Count
+        Set sp = sr(i)
+        isCurrLine = IsLineType(sp)
+        
+        If isCurrLine = isPrevLine Then
+            MsgBox "Shapes must alternate between lines and objects.", vbExclamation
+            Exit Sub
+        End If
+        
+        If Not prevShape Is Nothing Then
+            If isCurrLine Then
+                If sp.Left + sp.Width - (prevShape.Left + prevShape.Width + distSpace) > 2 Then
+                    sp.Width = sp.Left + sp.Width - (prevShape.Left + prevShape.Width + distSpace) ' CurrentRight - FutureLeft
+                End If
+                sp.Left = prevShape.Left + prevShape.Width + distSpace
+            Else
+                ' TODO: Add your "process for objects" here
+                prevShape.Width = sp.Left - prevShape.Left - distSpace
+            End If
+        End If
+        Set prevShape = sp
+        isPrevLine = isCurrLine
+    Next i
+End Sub
+
+Function IsLineType(sp As Shape) As Boolean
+    Select Case sp.Type
+        Case msoLine
+            IsLineType = True
+        Case msoFreeform
+            If sp.Nodes.Count = 2 Then
+                IsLineType = True
+            Else
+                IsLineType = False
+            End If
+        Case msoAutoShape
+            Select Case sp.AutoShapeType
+                Case msoShapeLeftRightArrow, msoShapeUpDownArrow, _
+                     msoShapeLeftArrow, msoShapeRightArrow, _
+                     msoShapeUpArrow, msoShapeDownArrow, _
+                     msoShapeBentArrow, msoShapeUTurnArrow, _
+                     msoShapeCircularArrow, msoShapeNotchedRightArrow, _
+                     -2 ' This one is tricky, eu assumo
+                     ' You can expand this list with other acceptable arrow shapes
+                    IsLineType = True
+                Case Else
+                    IsLineType = False
+            End Select
+        Case Else
+            If sp.Connector Then
+                IsLineType = True
+            Else
+                IsLineType = False
+            End If
+    End Select
+        'Case msoAutoShape
+        '    If sp.AutoShapeType = -2 Then
+        '        IsLineType = True
+        '    Else
+        '        IsLineType = False
+        '    End If
+End Function
 
 Sub doShadowParallelogram(aSlide As PowerPoint.slide, aShape As PowerPoint.Shape)
 Dim aSkew As Double, aHorizontalFlip As Boolean
 Dim ffb As PowerPoint.FreeformBuilder, res As PowerPoint.Shape
 Dim origRGB As Long, r As Long, g As Long, b As Long, amountDark As Single
-Const SHADOW_HEIGHT = 15
     Dim inset As Double
     Dim resultX As Double, resultY As Double
     aSkew = aShape.Adjustments(1)
@@ -60,8 +163,8 @@ Const SHADOW_HEIGHT = 15
         'Debug.Print "Bottom-Left  (skewed): (" & resultX & ", " & resultY & ")"
         Set ffb = aSlide.Shapes.BuildFreeform(msoEditingCorner, aShape.Left, aShape.Top)
         ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, resultY
-        ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, resultY + SHADOW_HEIGHT
-        ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left, aShape.Top + SHADOW_HEIGHT
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, resultY + SHADOW_HEIGHT_FOR_PARALLELOGRAM
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left, aShape.Top + SHADOW_HEIGHT_FOR_PARALLELOGRAM
         ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left, aShape.Top
         Set res = ffb.ConvertToShape
         amountDark = 0.15 ' Between 0 (no change) and 1 (totaly black)
@@ -69,8 +172,8 @@ Const SHADOW_HEIGHT = 15
         res.Line.Visible = msoFalse
         Set ffb = aSlide.Shapes.BuildFreeform(msoEditingCorner, resultX, aShape.Top + aShape.Height)
         ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left + aShape.Width, resultY
-        ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left + aShape.Width, resultY + SHADOW_HEIGHT
-        ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, aShape.Top + aShape.Height + SHADOW_HEIGHT
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, aShape.Left + aShape.Width, resultY + SHADOW_HEIGHT_FOR_PARALLELOGRAM
+        ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, aShape.Top + aShape.Height + SHADOW_HEIGHT_FOR_PARALLELOGRAM
         ffb.AddNodes msoSegmentLine, msoEditingCorner, resultX, aShape.Top + aShape.Height
         Set res = ffb.ConvertToShape
         amountDark = 0.075
@@ -199,14 +302,14 @@ Dim errmsg As String, previous As String
     Else
         Set shp = ffb.ConvertToShape
         With shp.Line
-            .ForeColor.RGB = RGB(166, 166, 166)
+            .ForeColor.RGB = RGB(100, 100, 100)
             .Weight = 1.5
             .BeginArrowheadLength = msoArrowheadShort
             .BeginArrowheadStyle = msoArrowheadOval
             .BeginArrowheadWidth = msoArrowheadNarrow
-            .EndArrowheadLength = msoArrowheadShort 'msoArrowheadLengthMedium
+            .EndArrowheadLength = msoArrowheadLengthMedium
             .EndArrowheadStyle = msoArrowheadTriangle
-            .EndArrowheadWidth = msoArrowheadNarrow 'msoArrowheadWidthMedium
+            .EndArrowheadWidth = msoArrowheadWidthMedium
         End With
         CreateBezierLine = True
     End If
@@ -1781,4 +1884,7 @@ Dim sr As ShapeRange
     Exit Function
 
 End Function
+
+
+
 
