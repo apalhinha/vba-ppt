@@ -5,6 +5,7 @@ Option Explicit
 ' Microsoft Excel 16.0 Object Library
 
 ' Revision
+' 2025-05-31 Constants GUIDE_TOP and GUIDE_LEFT
 ' 2025-05-30 AlignFlowObjects can start with a line
 ' 2025-05-29 AlignFlowObjects + AlignFlowModel
 ' 2025-05-28 BoxStyle sets shape outline
@@ -33,9 +34,12 @@ Const X_COORD = 1
 Const Y_COORD = 2
 Const ZERO_FLOAT = 0.00001
 Const ARADIUS = 8
-Const SHADOW_HEIGHT_FOR_PARALLELOGRAM = 15
+Const SHADOW_HEIGHT_FOR_PARALLELOGRAM = 8
 Const BEZIERS_GREY_COLOR = 166 ' RGB(value, value, value)
 Const BEZIERS_LINE_WIDTH = 2.25
+
+Const GUIDES_TOP_COORDINATES = 105.5761  '120#  ' 120# for NormalSlide. 105.5761 for BiggerSize
+Const GUIDES_LEFT_COORDINATES = 26.37504 '36# for NormalSlide. 26.37504 for BiggerSize
 
 Sub AlignFlowObjects()
   doAlignFlowObjects 0
@@ -1067,11 +1071,10 @@ Sub SetSlideDate()
 End Sub
 
 Public Sub JoinGuideTop()
-Const COORD_IN_HERE = 120
 Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
     If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
     For Each sp In sr
-        sp.Top = COORD_IN_HERE
+        sp.Top = GUIDES_TOP_COORDINATES
     Next
 End Sub
 
@@ -1094,20 +1097,18 @@ Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
 End Sub
 
 Public Sub JoinGuideLeft()
-Const COORD_IN_HERE = 36
 Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
     If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
     For Each sp In sr
-        sp.Left = COORD_IN_HERE
+        sp.Left = GUIDES_LEFT_COORDINATES
     Next
 End Sub
 
 Public Sub JoinGuideRight()
-Const COORD_IN_HERE = 924
 Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
     If Not selectedObjects(sr, isInsideGroup, 1) Then Exit Sub
     For Each sp In sr
-        sp.Left = COORD_IN_HERE - sp.Width
+        sp.Left = ActivePresentation.PageSetup.slideWidth - GUIDES_LEFT_COORDINATES - sp.Width
     Next
 End Sub
 
@@ -1887,5 +1888,4 @@ Dim sr As ShapeRange
     Exit Function
 
 End Function
-
 
