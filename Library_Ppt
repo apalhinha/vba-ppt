@@ -5,7 +5,8 @@ Option Explicit
 ' Microsoft Excel 16.0 Object Library
 
 ' Revision
-' 2025-06-06 ExportYellow allows distinct 'Point of Contact' in distinct slides
+' 2025-06-06 ExportYellow uses Trim()
+' 2025-06-05 ExportYellow allows distinct 'Point of Contact' in distinct slides
 ' 2025-05-31 Constants GUIDE_TOP and GUIDE_LEFT
 ' 2025-05-30 AlignFlowObjects can start with a line
 ' 2025-05-29 AlignFlowObjects + AlignFlowModel
@@ -606,7 +607,7 @@ Const LABEL_CONTACT = "Point of Contact "
                     End If
 
                     ' Get text
-                    dataText = pptShape.TextFrame.TextRange.Text
+                    dataText = Trim(pptShape.TextFrame.TextRange.Text)
 
                     ' Add to Excel table
                     If dataText <> "My Data Asset name" Then
@@ -1907,4 +1908,5 @@ Dim sr As ShapeRange
     Exit Function
 
 End Function
+
 
