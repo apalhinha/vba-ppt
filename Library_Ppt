@@ -5,6 +5,7 @@ Option Explicit
 ' Microsoft Excel 16.0 Object Library
 
 ' Revision
+' 2025-06-06 ExportYellow allows distinct 'Point of Contact' in distinct slides
 ' 2025-05-31 Constants GUIDE_TOP and GUIDE_LEFT
 ' 2025-05-30 AlignFlowObjects can start with a line
 ' 2025-05-29 AlignFlowObjects + AlignFlowModel
@@ -527,24 +528,24 @@ Dim shp As Shape
 End Sub
 
 Sub ExportYellow() ' ExportYellowShapesToExcel
-    Dim pptSlide As slide
-    Dim pptShape As Shape
-    Dim pptApp As PowerPoint.Application
-    Dim excelApp As Object
-    Dim excelWorkbook As Object
-    Dim excelSheet As Object
-    Dim tbl As Excel.ListObject
-    Dim newRow As Excel.ListRow
-    Dim slideWidth As Single, slideHeight As Single
-    Dim centerX As Single, centerY As Single
-    Dim hexYellow As Long
-    Dim dataText As String
-    Dim produceVal As String, stakeholderVal As String
-    Dim todayDate As String
-    Dim fileName As String
-    Dim ctShape As Integer
-    Dim contactPerson As String
-    Const LABEL_CONTACT = "Point of Contact in this Branch for this topic: "
+Dim pptSlide As slide
+Dim pptShape As Shape
+Dim pptApp As PowerPoint.Application
+Dim excelApp As Object
+Dim excelWorkbook As Object
+Dim excelSheet As Object
+Dim tbl As Excel.ListObject
+Dim newRow As Excel.ListRow
+Dim slideWidth As Single, slideHeight As Single
+Dim centerX As Single, centerY As Single
+Dim hexYellow As Long
+Dim dataText As String
+Dim produceVal As String, stakeholderVal As String
+Dim todayDate As String
+Dim fileName As String
+Dim ctShape As Integer
+Dim contactPerson As String, colContact As New Collection
+Const LABEL_CONTACT = "Point of Contact "
 
     ' Define yellow color (RGB(255, 247, 153))
     hexYellow = RGB(255, 247, 153)
@@ -565,20 +566,25 @@ Sub ExportYellow() ' ExportYellowShapesToExcel
     
     For Each pptSlide In ActivePresentation.Slides
         For Each pptShape In pptSlide.Shapes
-            If contactPerson = "" Then
-                If pptShape.HasTextFrame Then
-                    If Left(pptShape.TextFrame.TextRange.Text, Len(LABEL_CONTACT)) = LABEL_CONTACT Then
-                        contactPerson = Mid(pptShape.TextFrame.TextRange.Text, Len(LABEL_CONTACT) + 1)
-                        Exit For
-                    End If
+            If pptShape.HasTextFrame Then
+                If Left(pptShape.TextFrame.TextRange.Text, Len(LABEL_CONTACT)) = LABEL_CONTACT Then
+                    Dim idx As Integer
+                    idx = InStr(1, pptShape.TextFrame.TextRange.Text, ":")
+                    contactPerson = Trim(Mid(pptShape.TextFrame.TextRange.Text, idx + 1))
+                    colContact.Add contactPerson, "Slide" & pptSlide.SlideIndex
+                    Exit For
                 End If
             End If
         Next pptShape
     Next pptSlide
 
+    contactPerson = ""
     ' Loop through all slides and shapes
     For Each pptSlide In ActivePresentation.Slides
         'Debug.Print "Slide Index: " & pptSlide.SlideIndex
+        If FindInCollection(colContact, "Slide" & pptSlide.SlideIndex) Then
+            contactPerson = colContact.Item("Slide" & pptSlide.SlideIndex)
+        End If
         For Each pptShape In pptSlide.Shapes
             If pptShape.Type = msoTextBox Or pptShape.HasTextFrame Then
                 If pptShape.Fill.ForeColor.RGB = hexYellow Then
@@ -627,6 +633,19 @@ Sub ExportYellow() ' ExportYellowShapesToExcel
 ErrHandler:
     MsgBox "Error: " & Err.Description, vbCritical, BOX_TITLE
 End Sub
+
+Private Function FindInCollection(aCollection As Collection, aKey As Variant) As Boolean
+Dim v As Variant
+    On Error GoTo e_
+    v = aCollection(aKey)
+    FindInCollection = True
+    Exit Function
+    
+e_:
+    FindInCollection = False
+    Exit Function
+    
+End Function
 
 Public Sub FixFont()
     Dim sp As Shape, sr As ShapeRange, isInsideGroup As Boolean
