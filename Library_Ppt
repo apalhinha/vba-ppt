@@ -258,7 +258,7 @@ Dim dx As Double, dy As Double
 Dim ffb As PowerPoint.FreeformBuilder, shp As PowerPoint.Shape
 Dim xcur As Double, ycur As Double
 Dim xdelta As Double, ydelta As Double
-Const DEFDELTA = 10
+Const DEFDELTA = 5
 Dim errmsg As String, previous As String
 
     Set ffb = sld.Shapes.BuildFreeform(msoEditingCorner, aSeries(1, 1), aSeries(2, 1))
