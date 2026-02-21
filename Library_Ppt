@@ -5,6 +5,8 @@ Option Explicit
 ' Microsoft Excel 16.0 Object Library
 
 ' Revision
+' 2026-02-21, BoxSalmon uses colours "#FDE1D9", "#BEA9A3", "#5A1806"
+' 2026-01-29 Beziers havd an easy-to-control constant for the curve
 ' 2025-06-06 ExportYellow uses Trim()
 ' 2025-06-05 ExportYellow allows distinct 'Point of Contact' in distinct slides
 ' 2025-05-31 Constants GUIDE_TOP and GUIDE_LEFT
@@ -37,11 +39,13 @@ Const Y_COORD = 2
 Const ZERO_FLOAT = 0.00001
 Const ARADIUS = 8
 Const SHADOW_HEIGHT_FOR_PARALLELOGRAM = 8
-Const BEZIERS_GREY_COLOR = 166 ' RGB(value, value, value)
+Const BEZIERS_GREY_COLOR As Long = 166 ' RGB(value, value, value)
+Const BEZIERS_RED_COLOR As Long = 2764410
 Const BEZIERS_LINE_WIDTH = 2.25
+Const BEZIERS_CURVA = 10 '5
 
-Const GUIDES_TOP_COORDINATES = 105.5761  '120#  ' 120# for NormalSlide. 105.5761 for BiggerSize
-Const GUIDES_LEFT_COORDINATES = 26.37504 '36# for NormalSlide. 26.37504 for BiggerSize
+Const GUIDES_TOP_COORDINATES = 105.5761  ' 120# for NormalSlide. 105.5761 for BiggerSize
+Const GUIDES_LEFT_COORDINATES = 26.37504  '  36# for NormalSlide. 26.37504 for BiggerSize
 
 Sub AlignFlowObjects()
   doAlignFlowObjects 0
@@ -258,7 +262,6 @@ Dim dx As Double, dy As Double
 Dim ffb As PowerPoint.FreeformBuilder, shp As PowerPoint.Shape
 Dim xcur As Double, ycur As Double
 Dim xdelta As Double, ydelta As Double
-Const DEFDELTA = 5
 Dim errmsg As String, previous As String
 
     Set ffb = sld.Shapes.BuildFreeform(msoEditingCorner, aSeries(1, 1), aSeries(2, 1))
@@ -272,9 +275,9 @@ Dim errmsg As String, previous As String
                 'Debug.Print "horizontal"
                 If previous = "horizontal" Then errmsg = "horizontal"
                 previous = "horizontal"
-                xdelta = DEFDELTA
+                xdelta = BEZIERS_CURVA
                 If dx < 0 Then xdelta = -xdelta
-                ydelta = DEFDELTA ' Assume next vertical goes DOWN
+                ydelta = BEZIERS_CURVA ' Assume next vertical goes DOWN
                 If aSeries(2, i + 2) < aSeries(2, i + 1) Then ydelta = -ydelta  ' or UP
                 xcur = aSeries(1, i + 1)
                 .AddNodes msoSegmentLine, msoEditingCorner, xcur - xdelta, ycur   'msoEditingCorner, xcur - 2 * xdelta, ycur, xcur, ycur, xcur - xdelta, ycur
@@ -283,9 +286,9 @@ Dim errmsg As String, previous As String
                 'Debug.Print "vertical"
                 If previous = "vertical" Then errmsg = "vertical"
                 previous = "vertical"
-                ydelta = DEFDELTA
+                ydelta = BEZIERS_CURVA
                 If dy < 0 Then ydelta = -ydelta
-                xdelta = DEFDELTA
+                xdelta = BEZIERS_CURVA
                 If aSeries(1, i + 2) < aSeries(1, i + 1) Then xdelta = -xdelta
                 ycur = aSeries(2, i + 1)
                 .AddNodes msoSegmentLine, msoEditingCorner, xcur, ycur - ydelta  ' msoEditingCorner, xcur, ycur - 2 * ydelta, xcur, ycur, xcur, ycur - ydelta
@@ -312,6 +315,7 @@ Dim errmsg As String, previous As String
         Set shp = ffb.ConvertToShape
         With shp.Line
             .ForeColor.RGB = RGB(BEZIERS_GREY_COLOR, BEZIERS_GREY_COLOR, BEZIERS_GREY_COLOR)
+            '.ForeColor.RGB = BEZIERS_RED_COLOR
             .Weight = BEZIERS_LINE_WIDTH
             .BeginArrowheadLength = msoArrowheadShort
             .BeginArrowheadStyle = msoArrowheadOval
@@ -751,7 +755,7 @@ Public Sub BoxYellow()
 End Sub
 
 Public Sub BoxSalmon()
-    ApplyBoxStyle "#FAC3B5", "#BC9288", "#333333"
+    ApplyBoxStyle "#FDE1D9", "#BEA9A3", "#5A1806"
 End Sub
 
 Public Sub BoxGreen()
