@@ -5,7 +5,7 @@ Option Explicit
 ' Microsoft Excel 16.0 Object Library
 
 ' Revision
-' 2026-02-21, BoxSalmon uses colours "#FDE1D9", "#BEA9A3", "#5A1806"
+' 2026-02-21 BoxSalmon uses colours "#FDE7E1", "#BEA9A3", "#5A1806", and adjusted
 ' 2026-01-29 Beziers havd an easy-to-control constant for the curve
 ' 2025-06-06 ExportYellow uses Trim()
 ' 2025-06-05 ExportYellow allows distinct 'Point of Contact' in distinct slides
@@ -755,7 +755,7 @@ Public Sub BoxYellow()
 End Sub
 
 Public Sub BoxSalmon()
-    ApplyBoxStyle "#FDE1D9", "#BEA9A3", "#5A1806"
+    ApplyBoxStyle "#FDE7E1", "#BEA9A3", "#5A1806"
 End Sub
 
 Public Sub BoxGreen()
